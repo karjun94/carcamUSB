@@ -33,7 +33,15 @@ Requires JDK 17 and the Android SDK (platform 34).
 The APK is written to `app/build/outputs/apk/release/app-release.apk`. It's signed with the debug key.
 
 ## Install on the head unit
-The unit needs ADB, plus a few permissions that only ADB can grant:
+The unit needs wireless ADB. iMotor firmware also **blocks all app installs by default**: see **[docs/HEADUNIT-UNLOCK.md](docs/HEADUNIT-UNLOCK.md)** for how to unlock that and get ADB connected.
+
+Then one script unlocks installs, installs the app, grants the permissions only ADB can give, and pins ADB to port 5555:
+
+```bash
+scripts/headunit-setup.sh <ip>:<port> app/build/outputs/apk/release/app-release.apk
+```
+
+To do it by hand instead:
 
 ```bash
 adb install -r app-release.apk
@@ -47,21 +55,8 @@ adb shell appops set com.karjun.dmaxcam SYSTEM_ALERT_WINDOW allow
 
 Open the app once after installing so the button watcher starts.
 
-**Fixed ADB port (optional).** Wireless debugging picks a new port each time. On this unit the shell is allowed to set a fixed one (5555). It should stay after a restart; if it does not, repeat these steps:
-
-```bash
-adb shell setprop persist.adb.tcp.port 5555
-adb tcpip 5555
-adb connect <head-unit-ip>:5555
-```
-
-**iMotor firmware blocks app installs by default** with `INSTALL_FAILED_INTERNAL_ERROR: Install not allowed!`. The switch is in the vendor settings provider:
-
-```bash
-adb shell "content insert --uri content://isettings/global --bind name:s:clw_install_apps --bind value:s:1"
-```
-
-Set it back to `0` to block installs again.
+## Choosing a camera
+Any **USB UVC** camera with **MJPEG** works. On USB 2.0 that's needed for smooth 720p. A quick check: if it shows up in the Windows Camera app with no driver, it will work here. Tested with a USB microscope camera. For the front of the car, pick a waterproof (IP67+) wide-angle (120–170°) camera with a 3–5 m cable. Analog AHD/CVBS reverse cameras and Wi-Fi cameras won't work.
 
 ## Known limits
 - The guide lines are straight lines you place by hand. They don't follow steering angle.

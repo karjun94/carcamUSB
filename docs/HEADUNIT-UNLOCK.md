@@ -1,11 +1,12 @@
 # Unlocking app installs on an iMotor head unit
 
-This guide is for the Android head unit fitted to an Isuzu D-Max. It may also apply to other cars with **iMotor** firmware.
+This guide is for the factory Android head unit in an **Isuzu D-Max 2024 1.9 Auto Plus 4x2**. It may also apply to other D-Max variants and other cars with **iMotor** firmware.
 
 The unit tested:
 
 | | |
 |---|---|
+| Car | Isuzu D-Max 2024 1.9 Auto Plus 4x2 |
 | Model | `SL900CA_DTSSKL` |
 | Chip | Rockchip RK3326 (`RK3326_002_...`) |
 | Android | 11, 32-bit (`armeabi-v7a`) |
@@ -22,7 +23,7 @@ The "Unknown sources" setting has no effect. The block comes from iMotor's own s
 > **Use at your own risk.** This only changes a settings value, with no root and no firmware flashing, and it can be undone. It is still a dealer/vendor restriction, so check your warranty. Don't flash firmware from the internet onto these units: a wrong MCU or system image can brick the screen or break the CAN bus and steering controls.
 
 ## 1. Turn on wireless ADB
-1. **Developer options:** Settings → About device → tap **Build number** 7 times. When it asks for a password, use **today's date followed by `OOO`**: three capital letter O's, not zeros, and it is case-sensitive. The exact date format may vary between firmware versions.
+1. **Developer options:** Settings → About device → tap **Build number** 7 times. When it asks for a password, use **today's date as `yyyymmdd` followed by `OOO`**: three capital letter O's, not zeros, and it is case-sensitive. For example, on 18 October 2026 the password is `20261018OOO`. Use the date the head unit shows, if its clock differs from today.
 2. Connect the head unit and your computer to the **same Wi-Fi** (a phone or laptop hotspot works).
 3. Developer options → turn on **USB debugging** and **Wireless debugging**. Note the **IP address and port** shown under Wireless debugging.
 4. On the computer, install [Android platform-tools](https://developer.android.com/tools/releases/platform-tools) and run:

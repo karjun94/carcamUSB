@@ -1,6 +1,6 @@
 # D-Max Cam
 
-A small, ad-free USB (UVC) camera app for an aftermarket Android head unit in an Isuzu D-Max. Its main job is a front camera that you open and close with a steering-wheel button.
+A small, ad-free USB (UVC) camera app for the Android head unit in an Isuzu D-Max (tested on a 2024 1.9 Auto Plus 4x2). Its main job is a front camera that you open and close with a steering-wheel button.
 
 Built and tested on an **iMotor** head unit (Rockchip RK3326, Android 11, 32-bit, model `SL900CA_DTSSKL`). The steering-button part depends on how this firmware logs keys, so on other units it may need changes.
 

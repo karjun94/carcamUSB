@@ -22,7 +22,7 @@ The "Unknown sources" setting has no effect. The block comes from iMotor's own s
 > **Use at your own risk.** This only changes a settings value, with no root and no firmware flashing, and it can be undone. It is still a dealer/vendor restriction, so check your warranty. Don't flash firmware from the internet onto these units: a wrong MCU or system image can brick the screen or break the CAN bus and steering controls.
 
 ## 1. Turn on wireless ADB
-1. **Developer options:** Settings → About device → tap **Build number** 7 times. When it asks for a password, use **today's date followed by `OOO`**. The exact date format may vary between firmware versions.
+1. **Developer options:** Settings → About device → tap **Build number** 7 times. When it asks for a password, use **today's date followed by `OOO`**: three capital letter O's, not zeros, and it is case-sensitive. The exact date format may vary between firmware versions.
 2. Connect the head unit and your computer to the **same Wi-Fi** (a phone or laptop hotspot works).
 3. Developer options → turn on **USB debugging** and **Wireless debugging**. Note the **IP address and port** shown under Wireless debugging.
 4. On the computer, install [Android platform-tools](https://developer.android.com/tools/releases/platform-tools) and run:

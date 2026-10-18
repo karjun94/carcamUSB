@@ -6,12 +6,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
-import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
-import android.widget.ScrollView;
+import android.widget.GridLayout;
 import android.widget.Switch;
 import android.widget.TextView;
 
@@ -19,15 +15,16 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** Choose which steering-wheel button opens the camera, or learn one by pressing it. */
+/** Choose which steering-wheel button opens the camera, and how the picture looks. */
 public class SettingsActivity extends Activity {
     /** Keys the D-Max steering wheel was seen sending on this head unit. */
     private static final List<String> KNOWN_KEYS = Arrays.asList(
             "KEYCODE_CALL", "KEYCODE_ENDCALL", "KEYCODE_VOICE", "KEYCODE_MEDIA_MODE",
             "KEYCODE_MEDIA_NEXT", "KEYCODE_MEDIA_PREVIOUS", "KEYCODE_VOLUME_MUTE");
 
-    private RadioGroup mKeys;
-    private TextView mStatus;
+    private TextView mCurrentKey;
+    private TextView mKeyHint;
+    private GridLayout mKeys;
     private Button mLearn;
 
     private final BroadcastReceiver mLearned = new BroadcastReceiver() {
@@ -40,63 +37,42 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        int pad = (int) (24 * getResources().getDisplayMetrics().density);
+        setContentView(R.layout.activity_settings);
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad, pad, pad, pad);
+        mCurrentKey = findViewById(R.id.current_key);
+        mKeyHint = findViewById(R.id.key_hint);
+        mKeys = findViewById(R.id.keys);
+        mLearn = findViewById(R.id.learn);
 
-        TextView title = new TextView(this);
-        title.setText("Steering button that opens the camera");
-        title.setTextSize(22);
-        root.addView(title);
+        try {
+            String version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            ((TextView) findViewById(R.id.version)).setText("Front camera  ·  v" + version);
+        } catch (Exception ignored) {
+        }
 
-        mStatus = new TextView(this);
-        mStatus.setTextSize(16);
-        mStatus.setPadding(0, pad / 2, 0, pad / 2);
-        root.addView(mStatus);
-
-        mLearn = new Button(this);
+        findViewById(R.id.open_camera).setOnClickListener(
+                v -> startActivity(new Intent(this, CameraActivity.class)));
         mLearn.setOnClickListener(v -> {
-            boolean learning = !Prefs.isLearning(this);
-            Prefs.setLearning(this, learning);
+            Prefs.setLearning(this, !Prefs.isLearning(this));
             refresh();
         });
-        root.addView(mLearn);
 
-        mKeys = new RadioGroup(this);
-        mKeys.setPadding(0, pad / 2, 0, 0);
-        root.addView(mKeys);
+        Switch guides = findViewById(R.id.guides);
+        guides.setChecked(Prefs.showGuideLines(this));
+        findViewById(R.id.row_guides).setOnClickListener(v -> {
+            guides.toggle();
+            Prefs.setGuideLines(this, guides.isChecked());
+        });
 
-        TextView display = new TextView(this);
-        display.setText("Picture");
-        display.setTextSize(22);
-        display.setPadding(0, pad, 0, 0);
-        root.addView(display);
-
-        Switch guideLines = new Switch(this);
-        guideLines.setText("Show parking guide lines");
-        guideLines.setTextSize(18);
-        guideLines.setChecked(Prefs.showGuideLines(this));
-        guideLines.setOnCheckedChangeListener((b, on) -> Prefs.setGuideLines(this, on));
-        root.addView(guideLines);
-
-        Switch mirror = new Switch(this);
-        mirror.setText("Mirror the picture (left ↔ right)");
-        mirror.setTextSize(18);
+        Switch mirror = findViewById(R.id.mirror);
         mirror.setChecked(Prefs.isMirror(this));
-        mirror.setOnCheckedChangeListener((b, on) -> Prefs.setMirror(this, on));
-        root.addView(mirror);
+        findViewById(R.id.row_mirror).setOnClickListener(v -> {
+            mirror.toggle();
+            Prefs.setMirror(this, mirror.isChecked());
+        });
 
-        Button open = new Button(this);
-        open.setText("Open camera");
-        open.setOnClickListener(v -> startActivity(new Intent(this, CameraActivity.class)));
-        root.addView(open);
-
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(root, new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        setContentView(scroll);
+        findViewById(R.id.adjust_guides).setOnClickListener(v -> startActivity(
+                new Intent(this, CameraActivity.class).putExtra(CameraActivity.EXTRA_ADJUST, true)));
 
         // Learning needs the watcher running.
         startService(new Intent(this, KeyWatchService.class));
@@ -120,30 +96,30 @@ public class SettingsActivity extends Activity {
     private void refresh() {
         String current = Prefs.getTriggerKey(this);
         boolean learning = Prefs.isLearning(this);
-        mStatus.setText(learning
-                ? "Press the steering button you want to use…"
-                : "Current button: " + Prefs.label(current) + "  (" + current + ")");
-        mLearn.setText(learning ? "Cancel" : "Learn: press a steering button");
+        mCurrentKey.setText(learning ? "Listening…" : Prefs.label(current));
+        mKeyHint.setText(learning
+                ? "Press the steering button you want to use"
+                : "Press once to open the camera, again to close it");
+        mLearn.setText(learning ? "Cancel" : "Learn — press a steering button");
+        mLearn.setSelected(learning);
 
         List<String> keys = new ArrayList<>(KNOWN_KEYS);
         if (!keys.contains(current)) keys.add(current);
-        mKeys.setOnCheckedChangeListener(null);
         mKeys.removeAllViews();
-        for (int i = 0; i < keys.size(); i++) {
-            RadioButton rb = new RadioButton(this);
-            rb.setId(i + 1);
-            rb.setText(Prefs.label(keys.get(i)));
-            rb.setTextSize(18);
-            rb.setTag(keys.get(i));
-            mKeys.addView(rb);
-            if (keys.get(i).equals(current)) rb.setChecked(true);
-        }
-        mKeys.setOnCheckedChangeListener((group, checkedId) -> {
-            RadioButton rb = group.findViewById(checkedId);
-            if (rb != null) {
-                Prefs.setTriggerKey(this, (String) rb.getTag());
+        int gap = (int) (8 * getResources().getDisplayMetrics().density);
+        for (String key : keys) {
+            TextView chip = new TextView(this, null, 0, R.style.KeyChip);
+            chip.setText(Prefs.label(key));
+            chip.setSelected(!learning && key.equals(current));
+            chip.setOnClickListener(v -> {
+                Prefs.setTriggerKey(this, key);
                 refresh();
-            }
-        });
+            });
+            GridLayout.LayoutParams lp = new GridLayout.LayoutParams(
+                    GridLayout.spec(GridLayout.UNDEFINED), GridLayout.spec(GridLayout.UNDEFINED, 1f));
+            lp.width = 0;
+            lp.setMargins(0, 0, gap, gap);
+            mKeys.addView(chip, lp);
+        }
     }
 }

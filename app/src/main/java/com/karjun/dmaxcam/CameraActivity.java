@@ -14,7 +14,9 @@ import android.view.Gravity;
 import android.view.TextureView;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.herohan.uvcapp.CameraException;
@@ -30,6 +32,8 @@ public class CameraActivity extends Activity {
     private static final String TAG = "DmaxCam";
     /** Sent by KeyWatchService; closes the camera if it is already showing. */
     static final String EXTRA_TOGGLE = "toggle";
+    /** Opens straight into guide-line adjustment (from SettingsActivity). */
+    static final String EXTRA_ADJUST = "adjust";
 
     private static volatile boolean sResumed;
 
@@ -38,6 +42,8 @@ public class CameraActivity extends Activity {
     private AspectRatioTextureView mPreview;
     private GuideLinesView mGuideLines;
     private TextView mStatus;
+    private View mEditBar;
+    private boolean mEditing;
 
     static boolean isShowing() {
         return sResumed;
@@ -53,20 +59,37 @@ public class CameraActivity extends Activity {
         // The guide lines share a container with the preview so they cover the picture, not the black bars.
         FrameLayout frame = new FrameLayout(this);
         mPreview = new AspectRatioTextureView(this);
+        mPreview.setAspectRatio(16, 9);
         frame.addView(mPreview, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT));
         mGuideLines = new GuideLinesView(this);
+        mGuideLines.setOnChanged(() -> Prefs.setGuidePoints(this, mGuideLines.getPoints()));
         frame.addView(mGuideLines, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         root.addView(frame, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        int pad = dp(16);
         mStatus = new TextView(this);
-        mStatus.setTextColor(Color.WHITE);
-        mStatus.setTextSize(22);
-        mStatus.setGravity(Gravity.CENTER);
+        mStatus.setTextColor(getColor(R.color.text_primary));
+        mStatus.setTextSize(20);
+        mStatus.setBackgroundResource(R.drawable.status_pill);
+        mStatus.setPadding(pad * 2, pad, pad * 2, pad);
+        mStatus.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_videocam_light, 0, 0, 0);
+        mStatus.setCompoundDrawablePadding(pad);
+        mStatus.setGravity(Gravity.CENTER_VERTICAL);
         root.addView(mStatus, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        root.setOnClickListener(v -> finish());
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+
+        mEditBar = buildEditBar();
+        FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        barLp.topMargin = pad;
+        root.addView(mEditBar, barLp);
+
+        root.setOnClickListener(v -> {
+            if (!mEditing) finish();
+        });
         setContentView(root);
 
         mPreview.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
@@ -101,7 +124,62 @@ public class CameraActivity extends Activity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (intent.getBooleanExtra(EXTRA_TOGGLE, false) && sResumed) finish();
+        setIntent(intent);
+        if (intent.getBooleanExtra(EXTRA_TOGGLE, false) && sResumed && !mEditing) finish();
+    }
+
+    /** "Drag the dots to line up with your bumper"  [Reset]  [Done] */
+    private View buildEditBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setBackgroundResource(R.drawable.status_pill);
+        bar.setPadding(dp(24), dp(8), dp(8), dp(8));
+
+        TextView hint = new TextView(this);
+        hint.setText("Drag each dot. Bottom dots = bumper edge");
+        hint.setTextColor(getColor(R.color.text_primary));
+        hint.setTextSize(16);
+        bar.addView(hint);
+
+        Button reset = new Button(this);
+        reset.setText("Reset");
+        reset.setAllCaps(false);
+        reset.setTextColor(getColor(R.color.accent));
+        reset.setBackgroundResource(R.drawable.button_outline);
+        reset.setOnClickListener(v -> {
+            Prefs.resetGuidePoints(this);
+            mGuideLines.setPoints(Prefs.getGuidePoints(this));
+        });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(110), dp(48));
+        lp.setMarginStart(dp(16));
+        bar.addView(reset, lp);
+
+        Button done = new Button(this);
+        done.setText("Done");
+        done.setAllCaps(false);
+        done.setTextColor(getColor(R.color.on_accent));
+        done.setBackgroundResource(R.drawable.button_primary);
+        done.setOnClickListener(v -> {
+            Prefs.setGuidePoints(this, mGuideLines.getPoints());
+            if (getIntent().getBooleanExtra(EXTRA_ADJUST, false)) finish();
+            else setEditing(false);
+        });
+        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(dp(110), dp(48));
+        lp2.setMarginStart(dp(8));
+        bar.addView(done, lp2);
+        return bar;
+    }
+
+    private void setEditing(boolean editing) {
+        mEditing = editing;
+        mGuideLines.setEditing(editing);
+        mEditBar.setVisibility(editing ? View.VISIBLE : View.GONE);
+        mGuideLines.setVisibility(editing || Prefs.showGuideLines(this) ? View.VISIBLE : View.GONE);
+    }
+
+    private int dp(int value) {
+        return (int) (value * getResources().getDisplayMetrics().density);
     }
 
     @Override
@@ -122,7 +200,8 @@ public class CameraActivity extends Activity {
         hideSystemBars();
         // Re-read every time: the settings may have changed while we were away.
         mPreview.setScaleX(Prefs.isMirror(this) ? -1f : 1f);
-        mGuideLines.setVisibility(Prefs.showGuideLines(this) ? View.VISIBLE : View.GONE);
+        mGuideLines.setPoints(Prefs.getGuidePoints(this));
+        setEditing(getIntent().getBooleanExtra(EXTRA_ADJUST, false));
     }
 
     @Override

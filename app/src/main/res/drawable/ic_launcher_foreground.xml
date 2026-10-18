@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Steering wheel whose hub is a camera lens. 108dp adaptive-icon canvas; artwork stays in the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Rim -->
+    <path
+        android:pathData="M30,54a24,24 0 1,0 48,0a24,24 0 1,0 -48,0"
+        android:strokeWidth="5"
+        android:strokeColor="#2EC4B6" />
+    <!-- Spokes -->
+    <path
+        android:pathData="M32.5,54 L42,54 M66,54 L75.5,54 M54,66 L54,75.5"
+        android:strokeLineCap="round"
+        android:strokeWidth="5"
+        android:strokeColor="#2EC4B6" />
+    <!-- Lens body -->
+    <path
+        android:fillColor="#0E1116"
+        android:pathData="M42,54a12,12 0 1,0 24,0a12,12 0 1,0 -24,0"
+        android:strokeWidth="3"
+        android:strokeColor="#E8EDF2" />
+    <!-- Iris -->
+    <path
+        android:fillColor="#2EC4B6"
+        android:pathData="M48.5,54a5.5,5.5 0 1,0 11,0a5.5,5.5 0 1,0 -11,0" />
+    <!-- Glint -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M47.5,49.5a2.2,2.2 0 1,0 4.4,0a2.2,2.2 0 1,0 -4.4,0" />
+</vector>

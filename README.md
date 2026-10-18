@@ -9,7 +9,8 @@ Built and tested on an **iMotor** head unit (Rockchip RK3326, Android 11, 32-bit
 - **Steering-button toggle.** One press opens the camera, the next press closes it. Call is the default button.
 - **Settings** (separate "D-Max Cam Settings" launcher icon):
   - Pick the button from a list, or tap **Learn** and press any steering button.
-  - Parking guide lines on or off. They're fixed red/yellow/green bands, not calibrated.
+  - Parking guide lines on or off: red, yellow and green distance bands.
+  - **Adjust guide lines.** Drag each line's top and bottom ends separately to match the bumper edge and a camera that's off-centre or tilted. Saved on the unit, with Reset.
   - Mirror the picture left ↔ right.
 - Tap the screen to close the camera.
 
@@ -46,6 +47,14 @@ adb shell appops set com.karjun.dmaxcam SYSTEM_ALERT_WINDOW allow
 
 Open the app once after installing so the button watcher starts.
 
+**Fixed ADB port (optional).** Wireless debugging picks a new port each time. On this unit the shell is allowed to set a fixed one, which then stays on 5555 even after a restart:
+
+```bash
+adb shell setprop persist.adb.tcp.port 5555
+adb tcpip 5555
+adb connect <head-unit-ip>:5555
+```
+
 **iMotor firmware blocks app installs by default** with `INSTALL_FAILED_INTERNAL_ERROR: Install not allowed!`. The switch is in the vendor settings provider:
 
 ```bash
@@ -55,7 +64,7 @@ adb shell "content insert --uri content://isettings/global --bind name:s:clw_ins
 Set it back to `0` to block installs again.
 
 ## Known limits
-- The guide lines are a fixed overlay, not calibrated to the camera or the car.
+- The guide lines are straight lines you place by hand. They don't follow steering angle.
 - The firmware may block the app from starting at boot. If the button stops working after a restart, open the app once.
 - The button's own function still runs (Call opens the dialer). The camera is opened on top of it.
 

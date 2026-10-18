@@ -47,7 +47,7 @@ adb shell appops set com.karjun.dmaxcam SYSTEM_ALERT_WINDOW allow
 
 Open the app once after installing so the button watcher starts.
 
-**Fixed ADB port (optional).** Wireless debugging picks a new port each time. On this unit the shell is allowed to set a fixed one, which then stays on 5555 even after a restart:
+**Fixed ADB port (optional).** Wireless debugging picks a new port each time. On this unit the shell is allowed to set a fixed one (5555). It should stay after a restart; if it does not, repeat these steps:
 
 ```bash
 adb shell setprop persist.adb.tcp.port 5555

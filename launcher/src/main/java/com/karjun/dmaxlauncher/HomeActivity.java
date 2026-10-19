@@ -106,6 +106,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
     private final float[] mGravity = new float[3];
     private final float[] mGeomagnetic = new float[3];
     private boolean mHaveGravity, mHaveGeomagnetic;
+    private long mLastRotationVectorAt;
     private final float[] mRemapped = new float[9];
     private final float[] mOrientation = new float[3];
     /** Full-screen layer the camera card moves into when expanded. */
@@ -564,31 +565,42 @@ public class HomeActivity extends Activity implements LocationListener, android.
     // ---- Compass ----------------------------------------------------------------------------
 
     /**
-     * Heading from the plain accelerometer + magnetometer: available on more devices
-     * than the fused rotation-vector sensor (which also stalled on the test phone).
+     * Compass-sensor heading, used whenever there is no fresh GPS heading. Listens to
+     * both the fused rotation-vector sensor and the plain accelerometer + magnetometer,
+     * and takes whichever delivers: either one can be missing or stall on some devices.
      * Many head units have neither; GPS heading still works while driving.
      */
     private void startCompassSensor() {
+        int rate = android.hardware.SensorManager.SENSOR_DELAY_UI;
+        android.hardware.Sensor rotation = mSensors.getDefaultSensor(android.hardware.Sensor.TYPE_ROTATION_VECTOR);
+        if (rotation != null) mSensors.registerListener(this, rotation, rate);
         android.hardware.Sensor accel = mSensors.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER);
         android.hardware.Sensor magnet = mSensors.getDefaultSensor(android.hardware.Sensor.TYPE_MAGNETIC_FIELD);
         if (accel != null && magnet != null) {
-            mSensors.registerListener(this, accel, android.hardware.SensorManager.SENSOR_DELAY_UI);
-            mSensors.registerListener(this, magnet, android.hardware.SensorManager.SENSOR_DELAY_UI);
+            mSensors.registerListener(this, accel, rate);
+            mSensors.registerListener(this, magnet, rate);
         }
         updateCompass();
     }
 
     @Override
     public void onSensorChanged(android.hardware.SensorEvent event) {
-        if (event.sensor.getType() == android.hardware.Sensor.TYPE_ACCELEROMETER) {
-            System.arraycopy(event.values, 0, mGravity, 0, 3);
-            mHaveGravity = true;
-        } else {
-            System.arraycopy(event.values, 0, mGeomagnetic, 0, 3);
-            mHaveGeomagnetic = true;
+        switch (event.sensor.getType()) {
+            case android.hardware.Sensor.TYPE_ROTATION_VECTOR:
+                mLastRotationVectorAt = SystemClock.elapsedRealtime();
+                android.hardware.SensorManager.getRotationMatrixFromVector(mRotation, event.values);
+                break;
+            case android.hardware.Sensor.TYPE_ACCELEROMETER:
+                System.arraycopy(event.values, 0, mGravity, 0, 3);
+                mHaveGravity = true;
+                if (!fromMagnetometer()) return;
+                break;
+            default:
+                System.arraycopy(event.values, 0, mGeomagnetic, 0, 3);
+                mHaveGeomagnetic = true;
+                if (!fromMagnetometer()) return;
+                break;
         }
-        if (!mHaveGravity || !mHaveGeomagnetic) return;
-        if (!android.hardware.SensorManager.getRotationMatrix(mRotation, null, mGravity, mGeomagnetic)) return;
         // Azimuth relative to the top of the screen, whichever way the display is rotated.
         int x = android.hardware.SensorManager.AXIS_X, y = android.hardware.SensorManager.AXIS_Y;
         switch (getWindowManager().getDefaultDisplay().getRotation()) {
@@ -616,6 +628,13 @@ public class HomeActivity extends Activity implements LocationListener, android.
             mSensorBearing = (mSensorBearing + diff * 0.2f + 360) % 360;
         }
         updateCompass();
+    }
+
+    /** Accelerometer + magnetometer path; skipped while the fused sensor is delivering. */
+    private boolean fromMagnetometer() {
+        if (SystemClock.elapsedRealtime() - mLastRotationVectorAt < 1000) return false;
+        if (!mHaveGravity || !mHaveGeomagnetic) return false;
+        return android.hardware.SensorManager.getRotationMatrix(mRotation, null, mGravity, mGeomagnetic);
     }
 
     @Override

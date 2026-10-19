@@ -536,10 +536,12 @@ public class HomeActivity extends Activity implements LocationListener, android.
             }
         });
         column.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-            if (r - l == or - ol) return;
+            if (r - l == or - ol && b - t == ob - ot) return;
             int available = r - l - v.getPaddingLeft() - v.getPaddingRight();
-            // Natural row: 48 + 8 + 60 + 8 + 48 dp.
-            float scale = Math.min(1f, available / (float) dp(172));
+            // Play button about a third of the card's height (56–110dp), prev/next 80% of it;
+            // smaller if the row (48 + 8 + 60 + 8 + 48 at scale 1) would not fit the width.
+            float playPx = Math.max(dp(56), Math.min(dp(110), (b - t) * 0.34f));
+            float scale = Math.min(playPx / dp(60), available / (float) dp(172));
             v.post(() -> {
                 sizeButton(mPrev, 48, scale);
                 sizeButton(mPlay, 60, scale);
@@ -998,8 +1000,11 @@ public class HomeActivity extends Activity implements LocationListener, android.
         if (aspect < 1.55f) rows = Math.max(rows, 3);
         int perPage = cols * rows;
         // Icon size: CarPlay-like 72dp, smaller if the cell cannot fit it plus its label.
+        // Icons scale with the cell: about 45% of its width, leaving room for the label.
+        int cellW = (mPager.getWidth() - dp(32)) / cols - dp(8);
         int cellH = (mPager.getHeight() - dp(40)) / rows - dp(8);
-        int iconSize = Math.max(dp(36), Math.min(dp(72), cellH - dp(34)));
+        float labelSp = Math.max(15f, Math.min(20f, cellH / density / 11f));
+        int iconSize = Math.max(dp(40), Math.min((int) (cellW * 0.45f), cellH - dp((int) (labelSp * 2.2f + 8))));
 
         while (mPager.getChildCount() > 1) mPager.removeViewAt(1);
         List<String[]> apps = launchableApps(false);
@@ -1036,7 +1041,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
             TextView tv = new TextView(this);
             tv.setText(label);
             tv.setTextColor(mPalette.text);
-            tv.setTextSize(15);
+            tv.setTextSize(labelSp);
             tv.setGravity(Gravity.CENTER);
             tv.setMaxLines(1);
             tv.setEllipsize(android.text.TextUtils.TruncateAt.END);

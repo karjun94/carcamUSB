@@ -412,6 +412,22 @@ public class HomeActivity extends Activity implements LocationListener, android.
      * wider than the space next to the cover.
      */
     private void fitMediaCard() {
+        // Cover art is always square: as tall as the card allows, at most 40% of its width.
+        mMediaCard.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (r - l == or - ol && b - t == ob - ot) return;
+            int innerW = r - l - v.getPaddingLeft() - v.getPaddingRight();
+            int innerH = b - t - v.getPaddingTop() - v.getPaddingBottom();
+            int size = Math.max(0, Math.min(innerH, Math.round(innerW * 0.4f)));
+            v.post(() -> {
+                LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) mArt.getLayoutParams();
+                if (lp.width == size && lp.height == size && lp.weight == 0) return;
+                lp.width = size;
+                lp.height = size;
+                lp.weight = 0;
+                mArt.setLayoutParams(lp);
+                updateMedia();
+            });
+        });
         View text = findViewById(R.id.media_text);
         View column = (View) mControls.getParent();
         text.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
@@ -1028,7 +1044,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
                 mArt.setImageDrawable(icon);
                 mArt.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 mArt.setBackground(mPalette.chip(this));
-                int pad = Math.min(mArt.getWidth(), mArt.getHeight()) / 5;
+                int pad = Math.max(mArt.getLayoutParams().width, 0) / 5;
                 mArt.setPadding(pad, pad, pad, pad);
             } catch (PackageManager.NameNotFoundException e) {
                 setPlaceholderArt();

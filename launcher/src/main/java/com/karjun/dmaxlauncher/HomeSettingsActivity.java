@@ -37,7 +37,7 @@ public class HomeSettingsActivity extends Activity {
 
     private SharedPreferences mPrefs;
     private TextView mStartAppValue;
-    private TextView mShowBelowValue, mHideAboveValue;
+    private TextView mShowBelowValue, mHideAboveValue, mReverseSecsValue;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -83,6 +83,11 @@ public class HomeSettingsActivity extends Activity {
                 HomePrefs.parkingShowBelow(this), 2, 30);
         mHideAboveValue = stepperRow(driving, "Close again above", "parking_hide_above",
                 HomePrefs.parkingHideAbove(this), 5, 60);
+        switchRow(driving, "Front camera after reversing",
+                "Shows the front view when you shift out of reverse, e.g. pulling out of a space",
+                "front_after_reverse", HomePrefs.frontAfterReverse(this));
+        mReverseSecsValue = stepperRow(driving, "Show it for", "front_after_reverse_secs",
+                HomePrefs.frontAfterReverseSecs(this), 5, 30);
         columns.addView(driving, column(dp(12)));
 
         // --- Home screen ---
@@ -164,6 +169,7 @@ public class HomeSettingsActivity extends Activity {
         mStartAppValue.setText(pkg == null ? "None" : appLabel(pkg));
         mShowBelowValue.setText(HomePrefs.parkingShowBelow(this) + " km/h");
         mHideAboveValue.setText(HomePrefs.parkingHideAbove(this) + " km/h");
+        mReverseSecsValue.setText(HomePrefs.frontAfterReverseSecs(this) + " s");
     }
 
     // ---- Building blocks --------------------------------------------------------------------
@@ -253,6 +259,12 @@ public class HomeSettingsActivity extends Activity {
     }
 
     private void step(String key, int delta, int min, int max) {
+        if (key.equals("front_after_reverse_secs")) {
+            int secs = Math.max(min, Math.min(max, HomePrefs.frontAfterReverseSecs(this) + delta));
+            mPrefs.edit().putInt(key, secs).apply();
+            refresh();
+            return;
+        }
         int show = HomePrefs.parkingShowBelow(this);
         int hide = HomePrefs.parkingHideAbove(this);
         int value = Math.max(min, Math.min(max, mPrefs.getInt(key, key.equals("parking_show_below") ? show : hide) + delta));

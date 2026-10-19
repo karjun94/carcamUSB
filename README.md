@@ -28,6 +28,7 @@ Built and tested on an **iMotor** head unit (Rockchip RK3326, Android 11, 32-bit
   - a ⚙ button for camera settings
   - Back or a tap to close
 - **Swipe left for app pages**: 4×2 on 16:9 screens, 4×3 on 4:3. Long-press an app to put it on a tile or **hide** it. Hidden apps can be brought back from the "Hidden apps" icon.
+- **Front camera after reversing** (CarHome settings, off by default): when the reverse camera closes, the front camera shows for a set time (5–30 s) or until you drive off.
 - **CarPlay / Android Auto now playing:** the phone's track (title, artist, album) from the GLink apps' broadcasts.
 - **Radio on the music card:** while no app is playing, the head unit's FM/AM tuner shows its frequency with previous / next station buttons (read from the iMotor firmware's RadioManager).
 - **Matching icons** for the head unit's built-in apps (Radio, Music, Settings and others), letter tiles for apps without an icon, and separate CarPlay / Android Auto icons. "Choose default Home app" button in CarHome settings.

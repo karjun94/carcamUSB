@@ -33,6 +33,7 @@ public class CarHomeApp extends Application {
     public void onCreate() {
         super.onCreate();
         ProjectionSource.start(this);
+        ReverseWatcher.start(this);
         if (SystemClock.elapsedRealtime() < BOOT_WINDOW_MS && firstStartThisBoot()) {
             onCarStarted();
         } else if (getSystemService(android.os.PowerManager.class).isInteractive()) {

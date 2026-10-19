@@ -133,6 +133,11 @@ public class HomeActivity extends Activity implements LocationListener, android.
     // Parking mode: armed once above the "close" speed, fires when slowing below "open".
     private boolean mParkingArmed;
     private boolean mParkingOpened;
+    /** Front camera opened by ReverseWatcher; closes after a while or once driving. */
+    private boolean mReverseOpened;
+    private final Runnable mReverseTimeout = () -> {
+        if (mReverseOpened) setCameraExpanded(false);
+    };
 
     private LocationManager mLocationManager;
     private long mLastFixAt;
@@ -341,6 +346,12 @@ public class HomeActivity extends Activity implements LocationListener, android.
             else setCameraExpanded(true);
         } else if (CameraActions.ACTION_OPEN.equals(action)) {
             setCameraExpanded(true);
+            long autoClose = intent.getLongExtra(ReverseWatcher.EXTRA_AUTO_CLOSE_MS, 0);
+            if (autoClose > 0) {
+                mReverseOpened = true;
+                mHandler.removeCallbacks(mReverseTimeout);
+                mHandler.postDelayed(mReverseTimeout, autoClose);
+            }
         } else if (CameraActions.ACTION_ADJUST.equals(action)) {
             setCameraExpanded(true);
             setEditing(true);
@@ -789,6 +800,8 @@ public class HomeActivity extends Activity implements LocationListener, android.
         if (!expand) {
             setEditing(false);
             mParkingOpened = false;
+            mReverseOpened = false;
+            mHandler.removeCallbacks(mReverseTimeout);
         }
         ((ViewGroup) mCameraCard.getParent()).removeView(mCameraCard);
         if (expand) {
@@ -1541,6 +1554,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
         rememberPosition(location);
         float kmh = location.hasSpeed() ? location.getSpeed() * 3.6f : 0f;
         checkParkingMode(kmh);
+        if (mReverseOpened && kmh > HomePrefs.parkingHideAbove(this)) setCameraExpanded(false);
         if (location.hasBearing() && kmh >= GPS_HEADING_MIN_KMH) {
             mGpsBearing = location.getBearing();
             mGpsBearingAt = SystemClock.elapsedRealtime();

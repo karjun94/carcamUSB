@@ -37,6 +37,17 @@ final class HomePrefs {
         return get(c).getBoolean("matching_icons", true);
     }
 
+    // --- Front camera after reversing -----------------------------------------------------
+
+    static boolean frontAfterReverse(Context c) {
+        return get(c).getBoolean("front_after_reverse", false);
+    }
+
+    /** How long the front camera stays up after reversing (it also closes when you drive off). */
+    static int frontAfterReverseSecs(Context c) {
+        return get(c).getInt("front_after_reverse_secs", 10);
+    }
+
     // --- Parking mode -----------------------------------------------------------------------
 
     static boolean parkingMode(Context c) {

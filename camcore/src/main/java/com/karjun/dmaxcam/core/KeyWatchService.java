@@ -1,4 +1,4 @@
-package com.karjun.dmaxcam;
+package com.karjun.dmaxcam.core;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -45,6 +45,14 @@ public class KeyWatchService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // Without READ_LOGS (granted over ADB on the head unit) there is nothing to watch,
+        // e.g. on a phone reused as a head unit. And D-Max Home takes over from D-Max Cam.
+        boolean canRead = checkSelfPermission(android.Manifest.permission.READ_LOGS)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        if (!canRead || CameraActions.deferToLauncher(this)) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         if (mThread == null) {
             mRunning = true;
             mThread = new Thread(this::watchLoop, "keywatch");
@@ -100,12 +108,8 @@ public class KeyWatchService extends Service {
         long now = SystemClock.elapsedRealtime();
         if (now - mLastTrigger < DEBOUNCE_MS) return;
         mLastTrigger = now;
-        boolean close = CameraActivity.isShowing();
-        if (!close) SystemClock.sleep(LAUNCH_DELAY_MS);
-        Intent intent = new Intent(this, CameraActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                .putExtra(CameraActivity.EXTRA_TOGGLE, close);
-        startActivity(intent);
+        if (!CameraActions.isShowing()) SystemClock.sleep(LAUNCH_DELAY_MS);
+        CameraActions.send(this, CameraActions.ACTION_TOGGLE);
     }
 
     private Notification buildNotification() {

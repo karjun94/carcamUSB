@@ -1,0 +1,27 @@
+plugins {
+    id 'com.android.library'
+}
+
+// Camera features shared by D-Max Cam (standalone) and D-Max Home (launcher):
+// steering-button watcher, guide lines, mirror and the camera settings screen.
+android {
+    namespace 'com.karjun.dmaxcam.core'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 24
+        targetSdk 30
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint { abortOnError false }
+}
+
+dependencies {
+    api 'com.herohan:UVCAndroid:1.0.13'
+    api platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')
+}

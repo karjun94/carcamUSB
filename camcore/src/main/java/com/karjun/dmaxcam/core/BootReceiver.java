@@ -1,4 +1,4 @@
-package com.karjun.dmaxcam;
+package com.karjun.dmaxcam.core;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;

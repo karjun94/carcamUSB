@@ -38,6 +38,13 @@ import android.widget.LinearLayout;
 import android.widget.TextClock;
 import android.widget.TextView;
 
+import com.karjun.dmaxcam.core.CameraActions;
+import com.karjun.dmaxcam.core.GuideEditBar;
+import com.karjun.dmaxcam.core.GuideLinesView;
+import com.karjun.dmaxcam.core.KeyWatchService;
+import com.karjun.dmaxcam.core.Prefs;
+import com.karjun.dmaxcam.core.SettingsActivity;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -85,7 +92,6 @@ public class HomeActivity extends Activity implements LocationListener, android.
     private SwipePager mPager;
     private LinearLayout mDots;
 
-    private static final String CAMERA_APP = "com.karjun.dmaxcam";
     private static final int REQ_CAMERA = 2;
     private FrameLayout mCameraCard;
     private CardCamera mCardCamera;
@@ -111,6 +117,11 @@ public class HomeActivity extends Activity implements LocationListener, android.
     private final float[] mOrientation = new float[3];
     /** Full-screen layer the camera card moves into when expanded. */
     private FrameLayout mExpanded;
+    private com.serenegiant.widget.AspectRatioTextureView mPreview;
+    private GuideLinesView mGuideLines;
+    private GuideEditBar mEditBar;
+    private boolean mEditing;
+    private boolean mResumed;
 
     private LocationManager mLocationManager;
     private long mLastFixAt;
@@ -213,6 +224,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
 
         fitMediaCard();
         setUpLeftCard();
+        startService(new Intent(this, KeyWatchService.class));
 
         mSessionManager = (MediaSessionManager) getSystemService(Context.MEDIA_SESSION_SERVICE);
         mListener = new ComponentName(this, MediaListener.class);
@@ -227,12 +239,17 @@ public class HomeActivity extends Activity implements LocationListener, android.
         buildTiles();
         connectMedia();
         startLocation();
-        showLeftCard();
+        mResumed = true;
+        mPreview.setScaleX(Prefs.isMirror(this) ? -1f : 1f);
+        mGuideLines.setPoints(Prefs.getGuidePoints(this));
+        if (!handleCameraIntent(getIntent())) showLeftCard();
+        setIntent(new Intent(Intent.ACTION_MAIN));
         mHandler.post(mTick);
     }
 
     @Override
     protected void onPause() {
+        mResumed = false;
         setCameraExpanded(false);
         mCardCamera.stop();
         mSensors.unregisterListener(this);
@@ -261,9 +278,36 @@ public class HomeActivity extends Activity implements LocationListener, android.
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        String action = intent.getAction();
+        if (action != null && action.startsWith("com.karjun.dmaxcam.action.")) {
+            // Handled in onResume, once the screen is back in front.
+            setIntent(intent);
+            return;
+        }
         // Home pressed while already showing: go back to the dashboard, like CarPlay.
         setCameraExpanded(false);
         mPager.setPage(0, true);
+    }
+
+    /**
+     * Steering button (TOGGLE), "Open camera" (OPEN) and "Adjust guide lines" (ADJUST)
+     * from the shared button watcher and settings screen. Returns true if handled.
+     */
+    private boolean handleCameraIntent(Intent intent) {
+        String action = intent == null ? null : intent.getAction();
+        if (CameraActions.ACTION_TOGGLE.equals(action)) {
+            if (isCameraExpanded() && !mEditing) setCameraExpanded(false);
+            else setCameraExpanded(true);
+        } else if (CameraActions.ACTION_OPEN.equals(action)) {
+            setCameraExpanded(true);
+        } else if (CameraActions.ACTION_ADJUST.equals(action)) {
+            setCameraExpanded(true);
+            setEditing(true);
+        } else {
+            return false;
+        }
+        mPager.setPage(0, false);
+        return true;
     }
 
     // ---- Theme ----------------------------------------------------------------------------
@@ -480,18 +524,28 @@ public class HomeActivity extends Activity implements LocationListener, android.
 
         mCameraCard = new FrameLayout(this);
         mCameraCard.setClipToOutline(true);
-        com.serenegiant.widget.AspectRatioTextureView preview = new com.serenegiant.widget.AspectRatioTextureView(this);
-        mCameraCard.addView(preview, new FrameLayout.LayoutParams(
+        FrameLayout picture = new FrameLayout(this);
+        mPreview = new com.serenegiant.widget.AspectRatioTextureView(this);
+        picture.addView(mPreview, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        mGuideLines = new GuideLinesView(this);
+        mGuideLines.setOnChanged(() -> Prefs.setGuidePoints(this, mGuideLines.getPoints()));
+        mGuideLines.setVisibility(View.GONE);
+        picture.addView(mGuideLines, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mCameraCard.addView(picture, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
         TextView status = new TextView(this);
         status.setTextSize(16);
         status.setGravity(Gravity.CENTER);
         mCameraCard.addView(status, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        mCameraCard.setOnClickListener(v -> setCameraExpanded(mCameraCard.getParent() != mExpanded));
+        mCameraCard.setOnClickListener(v -> {
+            if (!mEditing) setCameraExpanded(!isCameraExpanded());
+        });
         holder.addView(mCameraCard, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        mCardCamera = new CardCamera(preview, status);
+        mCardCamera = new CardCamera(mPreview, status);
 
         mCompass = new CompassView(this);
         holder.addView(mCompass, new FrameLayout.LayoutParams(
@@ -511,36 +565,44 @@ public class HomeActivity extends Activity implements LocationListener, android.
         column.addView(holder, index, cardLp);
         mCardHolder = holder;
 
-        // In the full-screen view: a shortcut to D-Max Cam for guide lines / mirror.
-        TextView guides = new TextView(this);
-        guides.setText("Guide lines view");
-        guides.setTextColor(0xFF0B1A19);
-        guides.setTextSize(16);
-        guides.setTypeface(null, android.graphics.Typeface.BOLD);
-        guides.setGravity(Gravity.CENTER);
-        guides.setPadding(dp(20), dp(12), dp(20), dp(12));
-        GradientDrawable pill = new GradientDrawable();
-        pill.setColor(0xFF2EC4B6);
-        pill.setCornerRadius(dp(24));
-        guides.setBackground(pill);
-        guides.setOnClickListener(v -> {
-            setCameraExpanded(false);
-            launch(CAMERA_APP);
-        });
-        FrameLayout.LayoutParams gLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
-        gLp.setMargins(0, 0, dp(16), dp(16));
-        mExpanded.addView(guides, gLp);
-        mExpanded.setTag(guides);
+        // Full-screen extras: guide-line edit bar (top) and camera settings (top right).
+        mEditBar = new GuideEditBar(this, mGuideLines, () -> setEditing(false));
+        mEditBar.setVisibility(View.GONE);
+        FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        barLp.topMargin = dp(16);
+        mExpanded.addView(mEditBar, barLp);
+
+        ImageButton gear = new ImageButton(this);
+        gear.setImageResource(R.drawable.ic_settings);
+        gear.setContentDescription("Camera settings");
+        gear.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        gear.setPadding(dp(12), dp(12), dp(12), dp(12));
+        gear.setImageTintList(ColorStateList.valueOf(0xFF2EC4B6));
+        GradientDrawable gearBg = new GradientDrawable();
+        gearBg.setShape(GradientDrawable.OVAL);
+        gearBg.setColor(0xB3171B22);
+        gear.setBackground(gearBg);
+        gear.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+        FrameLayout.LayoutParams gearLp = new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.TOP | Gravity.END);
+        gearLp.setMargins(0, dp(16), dp(16), 0);
+        mExpanded.addView(gear, gearLp);
+        mExpanded.setTag(gear);
     }
 
     /**
      * Moves the live camera view between its card and the full-screen layer.
      * The camera keeps running; only the view is re-parented, so there is no reopen.
      */
+    private boolean isCameraExpanded() {
+        return mCameraCard.getParent() == mExpanded;
+    }
+
     private void setCameraExpanded(boolean expand) {
-        boolean expanded = mCameraCard.getParent() == mExpanded;
+        boolean expanded = isCameraExpanded();
         if (expand == expanded) return;
+        if (!expand) setEditing(false);
         ((ViewGroup) mCameraCard.getParent()).removeView(mCameraCard);
         if (expand) {
             mExpanded.addView(mCameraCard, 0, new FrameLayout.LayoutParams(
@@ -548,9 +610,6 @@ public class HomeActivity extends Activity implements LocationListener, android.
             // Edge to edge: no card corners or border while full screen.
             mCameraCard.setBackgroundColor(Color.BLACK);
             mCameraCard.setClipToOutline(false);
-            View guides = (View) mExpanded.getTag();
-            guides.setVisibility(getPackageManager().getLaunchIntentForPackage(CAMERA_APP) != null
-                    ? View.VISIBLE : View.GONE);
             mExpanded.setVisibility(View.VISIBLE);
         } else {
             mExpanded.setVisibility(View.GONE);
@@ -560,6 +619,25 @@ public class HomeActivity extends Activity implements LocationListener, android.
             mCameraCard.setBackground(cameraCardBackground());
             mCameraCard.setClipToOutline(true);
         }
+        CameraActions.setShowing(expand);
+        mPreview.setScaleX(Prefs.isMirror(this) ? -1f : 1f);
+        updateGuideLines();
+        // Starts the camera if the card was not showing it, or stops it again on collapse.
+        showLeftCard();
+    }
+
+    /** Guide lines only in the full-screen view: when switched on, or while adjusting. */
+    private void updateGuideLines() {
+        boolean show = isCameraExpanded() && (mEditing || Prefs.showGuideLines(this));
+        mGuideLines.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
+    private void setEditing(boolean editing) {
+        mEditing = editing;
+        mGuideLines.setEditing(editing);
+        mEditBar.setVisibility(editing ? View.VISIBLE : View.GONE);
+        ((View) mExpanded.getTag()).setVisibility(editing ? View.GONE : View.VISIBLE);
+        updateGuideLines();
     }
 
     // ---- Compass ----------------------------------------------------------------------------
@@ -671,13 +749,13 @@ public class HomeActivity extends Activity implements LocationListener, android.
 
     private void showLeftCard() {
         int mode = leftMode();
-        boolean camera = mode == LEFT_CAMERA;
+        boolean camera = mode == LEFT_CAMERA || isCameraExpanded();
         mSpeedCard.setVisibility(mode == LEFT_SPEED ? View.VISIBLE : View.INVISIBLE);
         mCameraCard.setVisibility(camera ? View.VISIBLE : View.GONE);
         mCompass.setVisibility(mode == LEFT_COMPASS ? View.VISIBLE : View.GONE);
         if (mode == LEFT_COMPASS) startCompassSensor();
         else mSensors.unregisterListener(this);
-        if (!camera) {
+        if (!camera || !mResumed) {
             mCardCamera.stop();
             return;
         }

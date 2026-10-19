@@ -2,9 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Android 9+ only hands USB video devices to apps holding CAMERA. -->
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <!-- CAMERA, READ_LOGS etc. and the steering-button watcher come from :camcore. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
@@ -34,7 +32,21 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Camera requests from the shared button watcher and settings (CameraActions). -->
+            <intent-filter>
+                <action android:name="com.karjun.dmaxcam.action.TOGGLE_CAMERA" />
+                <action android:name="com.karjun.dmaxcam.action.OPEN_CAMERA" />
+                <action android:name="com.karjun.dmaxcam.action.ADJUST_GUIDES" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
+
+        <activity
+            android:name="com.karjun.dmaxcam.core.SettingsActivity"
+            android:exported="false"
+            android:label="Camera settings"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/AppTheme" />
 
         <activity
             android:name=".UsbAttachActivity"

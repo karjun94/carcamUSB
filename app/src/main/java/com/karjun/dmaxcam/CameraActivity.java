@@ -20,6 +20,12 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.herohan.uvcapp.CameraException;
+import com.karjun.dmaxcam.core.CameraActions;
+import com.karjun.dmaxcam.core.GuideEditBar;
+import com.karjun.dmaxcam.core.GuideLinesView;
+import com.karjun.dmaxcam.core.KeyWatchService;
+import com.karjun.dmaxcam.core.Prefs;
+import com.karjun.dmaxcam.core.R;
 import com.herohan.uvcapp.CameraHelper;
 import com.herohan.uvcapp.ICameraHelper;
 import com.serenegiant.usb.Size;
@@ -30,11 +36,6 @@ import java.util.List;
 /** Full-screen preview of the first USB (UVC) camera. Tap or press Back to close. */
 public class CameraActivity extends Activity {
     private static final String TAG = "DmaxCam";
-    /** Sent by KeyWatchService; closes the camera if it is already showing. */
-    static final String EXTRA_TOGGLE = "toggle";
-    /** Opens straight into guide-line adjustment (from SettingsActivity). */
-    static final String EXTRA_ADJUST = "adjust";
-
     private static volatile boolean sResumed;
 
     // The launcher's camera card may still be letting go of the camera when we open it
@@ -51,10 +52,6 @@ public class CameraActivity extends Activity {
     private TextView mStatus;
     private View mEditBar;
     private boolean mEditing;
-
-    static boolean isShowing() {
-        return sResumed;
-    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -87,7 +84,10 @@ public class CameraActivity extends Activity {
         root.addView(mStatus, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
 
-        mEditBar = buildEditBar();
+        mEditBar = new GuideEditBar(this, mGuideLines, () -> {
+            if (isAdjustIntent()) finish();
+            else setEditing(false);
+        });
         FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP | Gravity.CENTER_HORIZONTAL);
@@ -132,50 +132,12 @@ public class CameraActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        if (intent.getBooleanExtra(EXTRA_TOGGLE, false) && sResumed && !mEditing) finish();
+        // Steering button again while showing: close.
+        if (CameraActions.ACTION_TOGGLE.equals(intent.getAction()) && sResumed && !mEditing) finish();
     }
 
-    /** "Drag the dots to line up with your bumper"  [Reset]  [Done] */
-    private View buildEditBar() {
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setBackgroundResource(R.drawable.status_pill);
-        bar.setPadding(dp(24), dp(8), dp(8), dp(8));
-
-        TextView hint = new TextView(this);
-        hint.setText("Drag each dot. Bottom dots = bumper edge");
-        hint.setTextColor(getColor(R.color.text_primary));
-        hint.setTextSize(16);
-        bar.addView(hint);
-
-        Button reset = new Button(this);
-        reset.setText("Reset");
-        reset.setAllCaps(false);
-        reset.setTextColor(getColor(R.color.accent));
-        reset.setBackgroundResource(R.drawable.button_outline);
-        reset.setOnClickListener(v -> {
-            Prefs.resetGuidePoints(this);
-            mGuideLines.setPoints(Prefs.getGuidePoints(this));
-        });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(110), dp(48));
-        lp.setMarginStart(dp(16));
-        bar.addView(reset, lp);
-
-        Button done = new Button(this);
-        done.setText("Done");
-        done.setAllCaps(false);
-        done.setTextColor(getColor(R.color.on_accent));
-        done.setBackgroundResource(R.drawable.button_primary);
-        done.setOnClickListener(v -> {
-            Prefs.setGuidePoints(this, mGuideLines.getPoints());
-            if (getIntent().getBooleanExtra(EXTRA_ADJUST, false)) finish();
-            else setEditing(false);
-        });
-        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(dp(110), dp(48));
-        lp2.setMarginStart(dp(8));
-        bar.addView(done, lp2);
-        return bar;
+    private boolean isAdjustIntent() {
+        return CameraActions.ACTION_ADJUST.equals(getIntent().getAction());
     }
 
     private void setEditing(boolean editing) {
@@ -204,16 +166,18 @@ public class CameraActivity extends Activity {
     protected void onResume() {
         super.onResume();
         sResumed = true;
+        CameraActions.setShowing(true);
         hideSystemBars();
         // Re-read every time: the settings may have changed while we were away.
         mPreview.setScaleX(Prefs.isMirror(this) ? -1f : 1f);
         mGuideLines.setPoints(Prefs.getGuidePoints(this));
-        setEditing(getIntent().getBooleanExtra(EXTRA_ADJUST, false));
+        setEditing(isAdjustIntent());
     }
 
     @Override
     protected void onPause() {
         sResumed = false;
+        CameraActions.setShowing(false);
         super.onPause();
     }
 

@@ -6,4 +6,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "dmax-camera"
-include ':app', ':launcher'
+include ':camcore', ':app', ':launcher'

@@ -1,4 +1,4 @@
-package com.karjun.dmaxcam;
+package com.karjun.dmaxcam.core;
 
 import android.content.Context;
 import android.graphics.Canvas;
@@ -19,8 +19,8 @@ import android.view.View;
  */
 public class GuideLinesView extends View {
     /** Index of each endpoint's x in the points array; y follows at +1. */
-    static final int LEFT_BOTTOM = 0, LEFT_TOP = 2, RIGHT_BOTTOM = 4, RIGHT_TOP = 6;
-    static final float[] DEFAULT_POINTS = {
+    public static final int LEFT_BOTTOM = 0, LEFT_TOP = 2, RIGHT_BOTTOM = 4, RIGHT_TOP = 6;
+    public static final float[] DEFAULT_POINTS = {
             0.12f, 0.95f, 0.34f, 0.45f, // left line: bottom, top
             0.88f, 0.95f, 0.66f, 0.45f, // right line: bottom, top
     };
@@ -55,23 +55,23 @@ public class GuideLinesView extends View {
         mHandleRing.setStrokeWidth(3 * mDensity);
     }
 
-    void setPoints(float[] points) {
+    public void setPoints(float[] points) {
         mPoints = points.clone();
         invalidate();
     }
 
-    float[] getPoints() {
+    public float[] getPoints() {
         return mPoints.clone();
     }
 
     /** In edit mode the endpoints show as handles and can be dragged. */
-    void setEditing(boolean editing) {
+    public void setEditing(boolean editing) {
         mEditing = editing;
         invalidate();
     }
 
     /** Called when a drag finishes, so the new positions can be saved. */
-    void setOnChanged(Runnable onChanged) {
+    public void setOnChanged(Runnable onChanged) {
         mOnChanged = onChanged;
     }
 

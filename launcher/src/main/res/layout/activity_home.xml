@@ -17,7 +17,7 @@
 
         <FrameLayout
             android:id="@+id/clock_card"
-            style="@style/Card"
+            style="@style/HomeCard"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1.15">
@@ -77,7 +77,7 @@
 
         <LinearLayout
             android:id="@+id/speed_card"
-            style="@style/Card"
+            style="@style/HomeCard"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_marginTop="12dp"
@@ -134,7 +134,7 @@
 
         <LinearLayout
             android:id="@+id/media_card"
-            style="@style/Card"
+            style="@style/HomeCard"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1.15"

@@ -1,4 +1,4 @@
-package com.karjun.dmaxcam;
+package com.karjun.dmaxcam.core;
 
 import android.app.Activity;
 import android.content.BroadcastReceiver;
@@ -51,7 +51,7 @@ public class SettingsActivity extends Activity {
         }
 
         findViewById(R.id.open_camera).setOnClickListener(
-                v -> startActivity(new Intent(this, CameraActivity.class)));
+                v -> CameraActions.send(this, CameraActions.ACTION_OPEN));
         mLearn.setOnClickListener(v -> {
             Prefs.setLearning(this, !Prefs.isLearning(this));
             refresh();
@@ -71,8 +71,8 @@ public class SettingsActivity extends Activity {
             Prefs.setMirror(this, mirror.isChecked());
         });
 
-        findViewById(R.id.adjust_guides).setOnClickListener(v -> startActivity(
-                new Intent(this, CameraActivity.class).putExtra(CameraActivity.EXTRA_ADJUST, true)));
+        findViewById(R.id.adjust_guides).setOnClickListener(
+                v -> CameraActions.send(this, CameraActions.ACTION_ADJUST));
 
         // Learning needs the watcher running.
         startService(new Intent(this, KeyWatchService.class));
@@ -97,9 +97,16 @@ public class SettingsActivity extends Activity {
         String current = Prefs.getTriggerKey(this);
         boolean learning = Prefs.isLearning(this);
         mCurrentKey.setText(learning ? "Listening…" : Prefs.label(current));
-        mKeyHint.setText(learning
+        String hint = learning
                 ? "Press the steering button you want to use"
-                : "Press once to open the camera, again to close it");
+                : "Press once to open the camera, again to close it";
+        if (CameraActions.deferToLauncher(this)) {
+            hint = "D-Max Home is installed and handles the steering button";
+        } else if (checkSelfPermission(android.Manifest.permission.READ_LOGS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            hint = "Steering button needs log access, granted once over ADB (see README)";
+        }
+        mKeyHint.setText(hint);
         mLearn.setText(learning ? "Cancel" : "Learn — press a steering button");
         mLearn.setSelected(learning);
 

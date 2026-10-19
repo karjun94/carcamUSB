@@ -11,8 +11,8 @@ android {
         minSdk 24
         // The head unit runs Android 11; targeting 30 keeps background-start and USB rules simple.
         targetSdk 30
-        versionCode 6
-        versionName '1.5'
+        versionCode 7
+        versionName '1.6'
         ndk { abiFilters 'armeabi-v7a', 'arm64-v8a' }
     }
 
@@ -32,7 +32,5 @@ android {
 }
 
 dependencies {
-    implementation 'com.herohan:UVCAndroid:1.0.13'
-    // Keep transitive kotlin-stdlib-jdk7/jdk8 in step with kotlin-stdlib (avoids duplicate classes).
-    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')
+    implementation project(':camcore')
 }

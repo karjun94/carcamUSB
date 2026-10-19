@@ -1,12 +1,12 @@
-package com.karjun.dmaxcam;
+package com.karjun.dmaxcam.core;
 
 import android.content.Context;
 import android.content.SharedPreferences;
 
 /** Which steering-wheel key opens the camera, plus the "learn a key" flag. */
-final class Prefs {
-    static final String DEFAULT_KEY = "KEYCODE_CALL";
-    static final String ACTION_KEY_LEARNED = "com.karjun.dmaxcam.KEY_LEARNED";
+public final class Prefs {
+    public static final String DEFAULT_KEY = "KEYCODE_CALL";
+    public static final String ACTION_KEY_LEARNED = "com.karjun.dmaxcam.KEY_LEARNED";
 
     private static final String FILE = "settings";
     private static final String TRIGGER_KEY = "trigger_key";
@@ -22,24 +22,24 @@ final class Prefs {
         return context.getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
 
-    static String getTriggerKey(Context context) {
+    public static String getTriggerKey(Context context) {
         return prefs(context).getString(TRIGGER_KEY, DEFAULT_KEY);
     }
 
-    static void setTriggerKey(Context context, String key) {
+    public static void setTriggerKey(Context context, String key) {
         prefs(context).edit().putString(TRIGGER_KEY, key).putBoolean(LEARNING, false).apply();
     }
 
-    static boolean isLearning(Context context) {
+    public static boolean isLearning(Context context) {
         return prefs(context).getBoolean(LEARNING, false);
     }
 
-    static void setLearning(Context context, boolean learning) {
+    public static void setLearning(Context context, boolean learning) {
         prefs(context).edit().putBoolean(LEARNING, learning).apply();
     }
 
     /** Guide-line endpoints as fractions of the picture; see GuideLinesView.DEFAULT_POINTS. */
-    static float[] getGuidePoints(Context context) {
+    public static float[] getGuidePoints(Context context) {
         String saved = prefs(context).getString(GUIDE_POINTS, null);
         float[] defaults = GuideLinesView.DEFAULT_POINTS;
         if (saved == null) return defaults.clone();
@@ -54,7 +54,7 @@ final class Prefs {
         return points;
     }
 
-    static void setGuidePoints(Context context, float[] points) {
+    public static void setGuidePoints(Context context, float[] points) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < points.length; i++) {
             if (i > 0) sb.append(',');
@@ -63,28 +63,28 @@ final class Prefs {
         prefs(context).edit().putString(GUIDE_POINTS, sb.toString()).apply();
     }
 
-    static void resetGuidePoints(Context context) {
+    public static void resetGuidePoints(Context context) {
         prefs(context).edit().remove(GUIDE_POINTS).apply();
     }
 
-    static boolean isMirror(Context context) {
+    public static boolean isMirror(Context context) {
         return prefs(context).getBoolean(MIRROR, false);
     }
 
-    static void setMirror(Context context, boolean mirror) {
+    public static void setMirror(Context context, boolean mirror) {
         prefs(context).edit().putBoolean(MIRROR, mirror).apply();
     }
 
-    static boolean showGuideLines(Context context) {
+    public static boolean showGuideLines(Context context) {
         return prefs(context).getBoolean(GUIDE_LINES, false);
     }
 
-    static void setGuideLines(Context context, boolean show) {
+    public static void setGuideLines(Context context, boolean show) {
         prefs(context).edit().putBoolean(GUIDE_LINES, show).apply();
     }
 
     /** Friendly names for the D-Max steering-wheel keys; anything else is derived from the key code. */
-    static String label(String key) {
+    public static String label(String key) {
         switch (key) {
             case "KEYCODE_CALL": return "Call";
             case "KEYCODE_ENDCALL": return "Hang up";

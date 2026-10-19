@@ -1,0 +1,31 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.karjun.dmaxlauncher'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.karjun.dmaxlauncher'
+        minSdk 24
+        // Same reasoning as the camera app: the head unit runs Android 11.
+        targetSdk 30
+        versionCode 1
+        versionName '0.1'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint { abortOnError false; checkReleaseBuilds false }
+}

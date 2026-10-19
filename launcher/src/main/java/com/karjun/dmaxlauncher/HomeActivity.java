@@ -569,6 +569,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
         texts.addView(mNavFooter);
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
         tlp.setMarginStart(dp(18));
+        tlp.setMarginEnd(dp(36)); // room for the settings gear in the corner
         mNavCard.addView(texts, tlp);
         mNavCard.setOnClickListener(v -> {
             MediaListener.Nav nav = MediaListener.currentNav();
@@ -608,7 +609,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
         ((ViewGroup) mClockCard).getChildAt(0).setVisibility(clockVis);
         mThemeButton.setVisibility(clockVis);
         mThemeLabel.setVisibility(clockVis);
-        mHomeSettings.setVisibility(clockVis);
+        // The settings gear stays reachable during a trip (the nav text leaves room for it).
         if (!show) return;
         // Plain text: the apps' own styling (spans) renders oddly at our sizes.
         mNavDistance.setText(nav.distance == null ? "" : nav.distance.toString());

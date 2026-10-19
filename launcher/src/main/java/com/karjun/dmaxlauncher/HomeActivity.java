@@ -4,6 +4,9 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ComponentName;
+import android.content.IntentFilter;
+import android.content.BroadcastReceiver;
+import android.media.AudioManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -151,6 +154,8 @@ public class HomeActivity extends Activity implements LocationListener, android.
     private RadioSource mRadio;
     private RadioSource.Station mStation;
     private boolean mShowingRadio;
+    private ImageButton mMute;
+    private AudioManager mAudio;
     /** CarPlay / Android Auto track shown on the card (null when not). */
     private ProjectionSource.Track mShowingProjection;
 
@@ -253,6 +258,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
             } else if (mShowingProjection != null) {
                 launch(mShowingProjection.pkg);
             } else if (mShowingRadio) {
+                useRadio();
                 launch("com.imotor.fmam");
             } else if (mController != null) {
                 launch(mController.getPackageName());
@@ -260,6 +266,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
         });
 
         fitMediaCard();
+        setUpMuteButton();
         setUpLeftCard();
         setUpClockCardExtras();
         startService(new Intent(this, KeyWatchService.class));
@@ -280,6 +287,9 @@ public class HomeActivity extends Activity implements LocationListener, android.
         ProjectionSource.setListener(track -> updateMedia());
         if (mRadio != null) {
             mRadio.start(station -> {
+                if (station != null && mStation != null && !station.freq.equals(mStation.freq)) {
+                    useRadio();
+                }
                 mStation = station;
                 updateMedia();
             });
@@ -292,6 +302,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
         mGuideLines.setPoints(Prefs.getGuidePoints(this));
         if (!handleCameraIntent(getIntent())) showLeftCard();
         setIntent(new Intent(Intent.ACTION_MAIN));
+        updateMuteIcon();
         mHandler.post(mTick);
     }
 
@@ -420,6 +431,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
         buildTiles();
         buildAppPages();
         updateMedia();
+        updateMuteIcon();
     }
 
     // ---- Shortcuts ------------------------------------------------------------------------
@@ -1257,6 +1269,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
 
     /** @param key package name or "pkg/.Activity" (see AppIcons). */
     private boolean launch(String key) {
+        if ("com.imotor.fmam".equals(AppIcons.pkg(key))) useRadio();
         Intent intent = AppIcons.launchIntent(this, key);
         if (intent == null) return false;
         startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
@@ -1328,16 +1341,36 @@ public class HomeActivity extends Activity implements LocationListener, android.
         MediaMetadata md = mController == null ? null : mController.getMetadata();
         PlaybackState ps = mController == null ? null : mController.getPlaybackState();
         boolean appPlaying = ps != null && ps.getState() == PlaybackState.STATE_PLAYING;
-        // Priority: an app on the unit that is playing, then the phone over CarPlay /
-        // Android Auto, then the tuner (neither has a usable media session).
+        boolean appHasTrack = md != null && md.getString(MediaMetadata.METADATA_KEY_TITLE) != null;
         ProjectionSource.Track track = ProjectionSource.current();
-        mShowingProjection = !appPlaying && track != null && !track.title.isEmpty() ? track : null;
+        boolean projHasTrack = track != null && !track.title.isEmpty();
+
+        // Whatever is playing wins and becomes the "last used" source. When nothing
+        // plays (e.g. paused), keep showing the last used source instead of jumping to
+        // the radio, which always reports a station even when it is not the source.
+        String source;
+        if (appPlaying) source = SOURCE_APP;
+        else if (projHasTrack && track.playing()) source = SOURCE_PROJECTION;
+        else source = mPrefs.getString("last_source", null);
+        if ((appPlaying || SOURCE_PROJECTION.equals(source) && projHasTrack && track.playing())
+                && !source.equals(mPrefs.getString("last_source", null))) {
+            mPrefs.edit().putString("last_source", source).apply();
+        }
+        // Fall back if the remembered source has nothing to show.
+        if (SOURCE_APP.equals(source) && !appHasTrack) source = null;
+        if (SOURCE_PROJECTION.equals(source) && !projHasTrack) source = null;
+        if (SOURCE_RADIO.equals(source) && mStation == null) source = null;
+        if (source == null) {
+            source = appHasTrack ? SOURCE_APP : projHasTrack ? SOURCE_PROJECTION
+                    : mStation != null ? SOURCE_RADIO : null;
+        }
+
+        mShowingProjection = SOURCE_PROJECTION.equals(source) ? track : null;
+        mShowingRadio = SOURCE_RADIO.equals(source);
         if (mShowingProjection != null) {
-            mShowingRadio = false;
             showProjection(mShowingProjection);
             return;
         }
-        mShowingRadio = !appPlaying && mStation != null;
         if (mShowingRadio) {
             showRadio(mStation);
             return;
@@ -1365,18 +1398,12 @@ public class HomeActivity extends Activity implements LocationListener, android.
             mArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
             mArt.setImageBitmap(art);
         } else {
-            // No cover for this track: show the playing app's own icon instead.
-            try {
-                Drawable icon = getPackageManager().getApplicationIcon(mController.getPackageName());
-                mArt.setImageTintList(null);
-                mArt.setImageDrawable(icon);
-                mArt.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                mArt.setBackground(mPalette.chip(this));
-                int pad = Math.max(mArt.getLayoutParams().width, 0) / 5;
-                mArt.setPadding(pad, pad, pad, pad);
-            } catch (PackageManager.NameNotFoundException e) {
-                setPlaceholderArt();
-            }
+            // No cover for this track: show the playing app's (matching) icon, full size.
+            mArt.setImageTintList(null);
+            mArt.setImageDrawable(AppIcons.icon(this, mController.getPackageName()));
+            mArt.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            mArt.setBackground(null);
+            mArt.setPadding(0, 0, 0, 0);
         }
 
         PlaybackState state = mController.getPlaybackState();
@@ -1463,6 +1490,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
      * its |< >| buttons); RadioManager's own preset calls do nothing on this firmware.
      */
     private void radioStep(boolean next) {
+        useRadio();
         try {
             for (MediaController c : mSessionManager.getActiveSessions(mListener)) {
                 if (!"com.imotor.fmam".equals(c.getPackageName())) continue;
@@ -1494,6 +1522,56 @@ public class HomeActivity extends Activity implements LocationListener, android.
         mPlay.setImageResource(t.playing() ? R.drawable.ic_pause : R.drawable.ic_play);
         setControlEnabled(mPrev, true);
         setControlEnabled(mNext, true);
+    }
+
+    /**
+     * Mute / unmute next to the source label. Toggles Android's media stream mute, which
+     * the head unit also applies to the tuner and phone-projection audio.
+     */
+    private void setUpMuteButton() {
+        mAudio = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        ViewGroup column = (ViewGroup) mSource.getParent();
+        int index = column.indexOfChild(mSource);
+        column.removeView(mSource);
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(mSource, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        mMute = new ImageButton(this);
+        mMute.setContentDescription("Mute");
+        mMute.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mMute.setBackgroundResource(android.R.drawable.list_selector_background);
+        mMute.setPadding(dp(6), dp(6), dp(6), dp(6));
+        mMute.setOnClickListener(v -> {
+            mAudio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, 0);
+            updateMuteIcon();
+        });
+        row.addView(mMute, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        column.addView(row, index, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // Keep the icon right when muted elsewhere (steering wheel mute, volume keys).
+        IntentFilter f = new IntentFilter("android.media.STREAM_MUTE_CHANGED_ACTION");
+        f.addAction("android.media.VOLUME_CHANGED_ACTION");
+        registerReceiver(new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent i) {
+                updateMuteIcon();
+            }
+        }, f);
+    }
+
+    private void updateMuteIcon() {
+        if (mMute == null || mPalette == null) return;
+        boolean muted = mAudio.isStreamMute(AudioManager.STREAM_MUSIC);
+        mMute.setImageResource(muted ? R.drawable.ic_volume_off : R.drawable.ic_volume_on);
+        mMute.setImageTintList(ColorStateList.valueOf(muted ? 0xFFE5484D : mPalette.textSecondary));
+        mMute.setContentDescription(muted ? "Unmute" : "Mute");
+    }
+
+    private static final String SOURCE_APP = "app", SOURCE_PROJECTION = "projection", SOURCE_RADIO = "radio";
+
+    /** The tuner was just used (station changed / opened), so it is the source to show. */
+    private void useRadio() {
+        mPrefs.edit().putString("last_source", SOURCE_RADIO).apply();
     }
 
     /** Radio on the music card: "RADIO · FM", big frequency, RDS station name. */

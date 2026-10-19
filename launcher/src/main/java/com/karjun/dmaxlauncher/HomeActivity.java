@@ -43,7 +43,7 @@ import java.util.Collections;
 import java.util.List;
 
 /** Car home screen: big clock, GPS speed, now playing, and app shortcuts. */
-public class HomeActivity extends Activity implements LocationListener {
+public class HomeActivity extends Activity implements LocationListener, android.hardware.SensorEventListener {
     private static final int REQ_LOCATION = 1;
     private static final long TICK_MS = 30_000;
     /** No GPS fix for this long and the speed shows "--". */
@@ -91,6 +91,23 @@ public class HomeActivity extends Activity implements LocationListener {
     private CardCamera mCardCamera;
     private ImageButton mSwapButton;
     private FrameLayout mCardHolder;
+    private CompassView mCompass;
+
+    /** Lower-left card: speed, camera or compass (cycled by the swap button). */
+    private static final int LEFT_SPEED = 0, LEFT_CAMERA = 1, LEFT_COMPASS = 2;
+    /** Above this speed the GPS direction of travel is trusted over the compass sensor. */
+    private static final float GPS_HEADING_MIN_KMH = 5f;
+    private static final long GPS_HEADING_FRESH_MS = 3_000;
+    private android.hardware.SensorManager mSensors;
+    private float mGpsBearing = Float.NaN;
+    private long mGpsBearingAt;
+    private float mSensorBearing = Float.NaN;
+    private final float[] mRotation = new float[9];
+    private final float[] mGravity = new float[3];
+    private final float[] mGeomagnetic = new float[3];
+    private boolean mHaveGravity, mHaveGeomagnetic;
+    private final float[] mRemapped = new float[9];
+    private final float[] mOrientation = new float[3];
     /** Full-screen layer the camera card moves into when expanded. */
     private FrameLayout mExpanded;
 
@@ -217,6 +234,7 @@ public class HomeActivity extends Activity implements LocationListener {
     protected void onPause() {
         setCameraExpanded(false);
         mCardCamera.stop();
+        mSensors.unregisterListener(this);
         mHandler.removeCallbacks(mTick);
         super.onPause();
     }
@@ -276,6 +294,8 @@ public class HomeActivity extends Activity implements LocationListener {
             if (mCameraCard.getParent() != mExpanded) mCameraCard.setBackground(cameraCardBackground());
             ((TextView) mCameraCard.getChildAt(1)).setTextColor(0xFFE8EDF2);
             mSwapButton.setBackground(p.chip(this));
+            mCompass.setBackground(p.card(this));
+            mCompass.setColors(p.text, p.textSecondary, p.accent);
             mSwapButton.setImageTintList(ColorStateList.valueOf(p.accent));
         }
         for (TextView t : new TextView[]{mTime, mSpeed, mTitle}) t.setTextColor(p.text);
@@ -456,12 +476,17 @@ public class HomeActivity extends Activity implements LocationListener {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         mCardCamera = new CardCamera(preview, status);
 
+        mCompass = new CompassView(this);
+        holder.addView(mCompass, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mSensors = (android.hardware.SensorManager) getSystemService(Context.SENSOR_SERVICE);
+
         mSwapButton = new ImageButton(this);
         mSwapButton.setImageResource(R.drawable.ic_swap);
-        mSwapButton.setContentDescription("Swap speed and camera");
+        mSwapButton.setContentDescription("Switch speed / camera / compass");
         mSwapButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
         mSwapButton.setPadding(dp(10), dp(10), dp(10), dp(10));
-        mSwapButton.setOnClickListener(v -> setLeftCard(!mPrefs.getBoolean("left_camera", false)));
+        mSwapButton.setOnClickListener(v -> setLeftCard((leftMode() + 1) % 3));
         FrameLayout.LayoutParams swapLp = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP | Gravity.END);
         swapLp.setMargins(0, dp(8), dp(8), 0);
         holder.addView(mSwapButton, swapLp);
@@ -520,6 +545,77 @@ public class HomeActivity extends Activity implements LocationListener {
         }
     }
 
+    // ---- Compass ----------------------------------------------------------------------------
+
+    /**
+     * Heading from the plain accelerometer + magnetometer: available on more devices
+     * than the fused rotation-vector sensor (which also stalled on the test phone).
+     * Many head units have neither; GPS heading still works while driving.
+     */
+    private void startCompassSensor() {
+        android.hardware.Sensor accel = mSensors.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER);
+        android.hardware.Sensor magnet = mSensors.getDefaultSensor(android.hardware.Sensor.TYPE_MAGNETIC_FIELD);
+        if (accel != null && magnet != null) {
+            mSensors.registerListener(this, accel, android.hardware.SensorManager.SENSOR_DELAY_UI);
+            mSensors.registerListener(this, magnet, android.hardware.SensorManager.SENSOR_DELAY_UI);
+        }
+        updateCompass();
+    }
+
+    @Override
+    public void onSensorChanged(android.hardware.SensorEvent event) {
+        if (event.sensor.getType() == android.hardware.Sensor.TYPE_ACCELEROMETER) {
+            System.arraycopy(event.values, 0, mGravity, 0, 3);
+            mHaveGravity = true;
+        } else {
+            System.arraycopy(event.values, 0, mGeomagnetic, 0, 3);
+            mHaveGeomagnetic = true;
+        }
+        if (!mHaveGravity || !mHaveGeomagnetic) return;
+        if (!android.hardware.SensorManager.getRotationMatrix(mRotation, null, mGravity, mGeomagnetic)) return;
+        // Azimuth relative to the top of the screen, whichever way the display is rotated.
+        int x = android.hardware.SensorManager.AXIS_X, y = android.hardware.SensorManager.AXIS_Y;
+        switch (getWindowManager().getDefaultDisplay().getRotation()) {
+            case android.view.Surface.ROTATION_90:
+                x = android.hardware.SensorManager.AXIS_Y;
+                y = android.hardware.SensorManager.AXIS_MINUS_X;
+                break;
+            case android.view.Surface.ROTATION_180:
+                x = android.hardware.SensorManager.AXIS_MINUS_X;
+                y = android.hardware.SensorManager.AXIS_MINUS_Y;
+                break;
+            case android.view.Surface.ROTATION_270:
+                x = android.hardware.SensorManager.AXIS_MINUS_Y;
+                y = android.hardware.SensorManager.AXIS_X;
+                break;
+        }
+        android.hardware.SensorManager.remapCoordinateSystem(mRotation, x, y, mRemapped);
+        android.hardware.SensorManager.getOrientation(mRemapped, mOrientation);
+        float azimuth = (float) ((Math.toDegrees(mOrientation[0]) + 360) % 360);
+        // Light smoothing, taking the 359 -> 0 wrap into account.
+        if (Float.isNaN(mSensorBearing)) {
+            mSensorBearing = azimuth;
+        } else {
+            float diff = ((azimuth - mSensorBearing + 540) % 360) - 180;
+            mSensorBearing = (mSensorBearing + diff * 0.2f + 360) % 360;
+        }
+        updateCompass();
+    }
+
+    @Override
+    public void onAccuracyChanged(android.hardware.Sensor sensor, int accuracy) {
+    }
+
+    /** GPS direction of travel while moving; otherwise the compass sensor, if any. */
+    private void updateCompass() {
+        if (mCompass == null || mCompass.getVisibility() != View.VISIBLE) return;
+        boolean gpsFresh = !Float.isNaN(mGpsBearing)
+                && SystemClock.elapsedRealtime() - mGpsBearingAt < GPS_HEADING_FRESH_MS;
+        if (gpsFresh) mCompass.setBearing(mGpsBearing, "GPS heading");
+        else if (!Float.isNaN(mSensorBearing)) mCompass.setBearing(mSensorBearing, "Compass sensor");
+        else mCompass.setBearing(Float.NaN, "");
+    }
+
     /** Black card with the theme's rounded corners and border. */
     private GradientDrawable cameraCardBackground() {
         GradientDrawable bg = mPalette.card(this);
@@ -527,15 +623,25 @@ public class HomeActivity extends Activity implements LocationListener {
         return bg;
     }
 
-    private void setLeftCard(boolean camera) {
-        mPrefs.edit().putBoolean("left_camera", camera).apply();
+    private int leftMode() {
+        // 0.2 stored a camera on/off flag; carry it over.
+        int legacy = mPrefs.getBoolean("left_camera", false) ? LEFT_CAMERA : LEFT_SPEED;
+        return mPrefs.getInt("left_mode", legacy);
+    }
+
+    private void setLeftCard(int mode) {
+        mPrefs.edit().putInt("left_mode", mode).apply();
         showLeftCard();
     }
 
     private void showLeftCard() {
-        boolean camera = mPrefs.getBoolean("left_camera", false);
-        mSpeedCard.setVisibility(camera ? View.INVISIBLE : View.VISIBLE);
+        int mode = leftMode();
+        boolean camera = mode == LEFT_CAMERA;
+        mSpeedCard.setVisibility(mode == LEFT_SPEED ? View.VISIBLE : View.INVISIBLE);
         mCameraCard.setVisibility(camera ? View.VISIBLE : View.GONE);
+        mCompass.setVisibility(mode == LEFT_COMPASS ? View.VISIBLE : View.GONE);
+        if (mode == LEFT_COMPASS) startCompassSensor();
+        else mSensors.unregisterListener(this);
         if (!camera) {
             mCardCamera.stop();
             return;
@@ -1050,6 +1156,11 @@ public class HomeActivity extends Activity implements LocationListener {
         mLastFixAt = SystemClock.elapsedRealtime();
         rememberPosition(location);
         float kmh = location.hasSpeed() ? location.getSpeed() * 3.6f : 0f;
+        if (location.hasBearing() && kmh >= GPS_HEADING_MIN_KMH) {
+            mGpsBearing = location.getBearing();
+            mGpsBearingAt = SystemClock.elapsedRealtime();
+        }
+        updateCompass();
         mSpeed.setText(String.valueOf(kmh < STOPPED_KMH ? 0 : Math.round(kmh)));
         mGpsStatus.setText(location.hasAccuracy()
                 ? "GPS  ·  ±" + Math.round(location.getAccuracy()) + " m"

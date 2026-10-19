@@ -224,14 +224,21 @@ public class HomeActivity extends Activity implements LocationListener, android.
         });
 
         mPrev.setOnClickListener(v -> {
-            if (mShowingRadio) radioStep(false);
+            if (mShowingProjection != null) ProjectionSource.sendKey(this, ProjectionSource.KEY_PREVIOUS);
+            else if (mShowingRadio) radioStep(false);
             else if (mController != null) mController.getTransportControls().skipToPrevious();
         });
         mNext.setOnClickListener(v -> {
-            if (mShowingRadio) radioStep(true);
+            if (mShowingProjection != null) ProjectionSource.sendKey(this, ProjectionSource.KEY_NEXT);
+            else if (mShowingRadio) radioStep(true);
             else if (mController != null) mController.getTransportControls().skipToNext();
         });
         mPlay.setOnClickListener(v -> {
+            if (mShowingProjection != null) {
+                ProjectionSource.sendKey(this, mShowingProjection.playing()
+                        ? ProjectionSource.KEY_PAUSE : ProjectionSource.KEY_PLAY);
+                return;
+            }
             if (mController == null) return;
             PlaybackState state = mController.getPlaybackState();
             if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
@@ -1468,7 +1475,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
         if (mRadio != null) mRadio.step(next);
     }
 
-    /** The phone's track over CarPlay / Android Auto (info only; control it on the phone screen). */
+    /** The phone's track over CarPlay / Android Auto, with play/pause/skip. */
     private void showProjection(ProjectionSource.Track t) {
         mSource.setText(t.source);
         if (!t.title.contentEquals(mTitle.getText())) mTitle.setText(t.title);
@@ -1481,7 +1488,12 @@ public class HomeActivity extends Activity implements LocationListener, android.
         mArt.setPadding(0, 0, 0, 0);
         mArt.setScaleType(ImageView.ScaleType.FIT_CENTER);
         mArt.setImageDrawable(AppIcons.icon(this, t.pkg));
-        mControls.setVisibility(View.GONE);
+        // Same commands as the steering-wheel media keys (LK_EVENT).
+        mControls.setVisibility(View.VISIBLE);
+        mPlay.setVisibility(View.VISIBLE);
+        mPlay.setImageResource(t.playing() ? R.drawable.ic_pause : R.drawable.ic_play);
+        setControlEnabled(mPrev, true);
+        setControlEnabled(mNext, true);
     }
 
     /** Radio on the music card: "RADIO · FM", big frequency, RDS station name. */

@@ -29,7 +29,7 @@ final class ProjectionSource {
         final String source;  // "CarPlay" / "Android Auto"
         final String pkg;     // app to open on tap
         final String title, artist, album;
-        final int state;      // raw GLink playback state (-1 = unknown)
+        final int state;      // raw GLink playback state (-1 = unknown, 2 = playing)
 
         Track(String source, String pkg, String title, String artist, String album, int state) {
             this.source = source;
@@ -39,6 +39,23 @@ final class ProjectionSource {
             this.album = album;
             this.state = state;
         }
+
+        boolean playing() {
+            return state == STATE_PLAYING;
+        }
+    }
+
+    /** GLink playback state for "playing" (firmware GlinkAdapter.isCarplayPlaying). */
+    static final int STATE_PLAYING = 2;
+    /**
+     * Commands for glink.intent.action.LK_EVENT (int extra "keyCode"), as the firmware's
+     * GlinkAdapter sends them for the steering-wheel media keys; both GLink apps listen.
+     */
+    static final int KEY_PREVIOUS = 13, KEY_NEXT = 14, KEY_PLAY = 15, KEY_PAUSE = 16;
+
+    static void sendKey(Context context, int code) {
+        Log.d(TAG, "LK_EVENT keyCode=" + code);
+        context.sendBroadcast(new Intent("glink.intent.action.LK_EVENT").putExtra("keyCode", code));
     }
 
     interface Listener {

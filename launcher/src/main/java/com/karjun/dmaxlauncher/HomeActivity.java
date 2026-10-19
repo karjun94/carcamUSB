@@ -142,6 +142,11 @@ public class HomeActivity extends Activity implements LocationListener, android.
     private boolean mMediaAllowed;
     private MediaController mController;
 
+    /** Head-unit FM/AM tuner (iMotor firmware only; null elsewhere). */
+    private RadioSource mRadio;
+    private RadioSource.Station mStation;
+    private boolean mShowingRadio;
+
     private final Runnable mTick = new Runnable() {
         @Override
         public void run() {
@@ -155,6 +160,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         mPrefs = getSharedPreferences("home", MODE_PRIVATE);
+        mRadio = RadioSource.create(this);
 
         // Page 0 is the dashboard; swiping left shows pages of app icons (like CarPlay).
         FrameLayout frame = new FrameLayout(this);
@@ -211,10 +217,12 @@ public class HomeActivity extends Activity implements LocationListener, android.
         });
 
         mPrev.setOnClickListener(v -> {
-            if (mController != null) mController.getTransportControls().skipToPrevious();
+            if (mShowingRadio) radioStep(false);
+            else if (mController != null) mController.getTransportControls().skipToPrevious();
         });
         mNext.setOnClickListener(v -> {
-            if (mController != null) mController.getTransportControls().skipToNext();
+            if (mShowingRadio) radioStep(true);
+            else if (mController != null) mController.getTransportControls().skipToNext();
         });
         mPlay.setOnClickListener(v -> {
             if (mController == null) return;
@@ -228,6 +236,8 @@ public class HomeActivity extends Activity implements LocationListener, android.
         mMediaCard.setOnClickListener(v -> {
             if (!mMediaAllowed) {
                 startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+            } else if (mShowingRadio) {
+                launch("com.imotor.fmam");
             } else if (mController != null) {
                 launch(mController.getPackageName());
             }
@@ -251,6 +261,12 @@ public class HomeActivity extends Activity implements LocationListener, android.
         buildTiles();
         buildAppPages();
         connectMedia();
+        if (mRadio != null) {
+            mRadio.start(station -> {
+                mStation = station;
+                updateMedia();
+            });
+        }
         startLocation();
         mResumed = true;
         MediaListener.setNavListener(this::showNav);
@@ -266,6 +282,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
     protected void onPause() {
         mResumed = false;
         MediaListener.setNavListener(null);
+        if (mRadio != null) mRadio.stop();
         // Keep the full-screen camera "open" while in the background (the steering
         // button's own app, e.g. the dialer for Call, briefly covers us); the stream
         // stops below and restarts on resume. A plain Home press closes it (onNewIntent).
@@ -1272,6 +1289,14 @@ public class HomeActivity extends Activity implements LocationListener, android.
             return;
         }
         MediaMetadata md = mController == null ? null : mController.getMetadata();
+        PlaybackState ps = mController == null ? null : mController.getPlaybackState();
+        boolean appPlaying = ps != null && ps.getState() == PlaybackState.STATE_PLAYING;
+        // The tuner has no media session: show it while no app is playing.
+        mShowingRadio = !appPlaying && mStation != null;
+        if (mShowingRadio) {
+            showRadio(mStation);
+            return;
+        }
         if (md == null || md.getString(MediaMetadata.METADATA_KEY_TITLE) == null) {
             showMediaPlaceholder("Music", "Nothing playing", "Start music in any app");
             return;
@@ -1313,6 +1338,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
         boolean playing = state != null && state.getState() == PlaybackState.STATE_PLAYING;
         // Remembered for "resume music when the car starts".
         if (playing) mPrefs.edit().putString("last_music_pkg", mController.getPackageName()).apply();
+        mPlay.setVisibility(View.VISIBLE);
         mPlay.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
         // Only offer what the player accepts right now: YouTube Music, for one, turns
         // "next" off at times, and sending it anyway leaves the player stopped.
@@ -1385,6 +1411,42 @@ public class HomeActivity extends Activity implements LocationListener, android.
     private static void setControlEnabled(View button, boolean enabled) {
         button.setEnabled(enabled);
         button.setAlpha(enabled ? 1f : 0.3f);
+    }
+
+    /**
+     * Previous / next station. The radio app's media session handles skip (same as
+     * its |< >| buttons); RadioManager's own preset calls do nothing on this firmware.
+     */
+    private void radioStep(boolean next) {
+        try {
+            for (MediaController c : mSessionManager.getActiveSessions(mListener)) {
+                if (!"com.imotor.fmam".equals(c.getPackageName())) continue;
+                if (next) c.getTransportControls().skipToNext();
+                else c.getTransportControls().skipToPrevious();
+                return;
+            }
+        } catch (SecurityException ignored) {
+        }
+        if (mRadio != null) mRadio.step(next);
+    }
+
+    /** Radio on the music card: "RADIO · FM", big frequency, RDS station name. */
+    private void showRadio(RadioSource.Station st) {
+        mSource.setText("Radio · " + st.band);
+        String title = st.freq + " " + st.unit;
+        if (!title.contentEquals(mTitle.getText())) mTitle.setText(title);
+        mArtist.setText(st.name);
+        mArtist.setVisibility(st.name.isEmpty() ? View.GONE : View.VISIBLE);
+        mArt.setImageTintList(null);
+        mArt.setBackground(null);
+        mArt.setPadding(0, 0, 0, 0);
+        mArt.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mArt.setImageDrawable(AppIcons.glyphTile(this, R.drawable.glyph_radio));
+        // Previous / next station; the tuner has no pause.
+        mControls.setVisibility(View.VISIBLE);
+        mPlay.setVisibility(View.INVISIBLE);
+        setControlEnabled(mPrev, true);
+        setControlEnabled(mNext, true);
     }
 
     private void showMediaPlaceholder(String source, String title, String subtitle) {

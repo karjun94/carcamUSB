@@ -39,7 +39,7 @@ final class AppIcons {
     private static final Map<String, Integer> KNOWN = new HashMap<>();
     /** Label / package keyword -> glyph, for built-in apps not listed above. */
     private static final String[][] KEYWORDS = {
-            {"carplay", "car"}, {"android auto", "car"}, {"androidauto", "car"},
+            {"carplay", "iphone"}, {"android auto", "android"}, {"androidauto", "android"},
             {"radio", "radio"}, {"fmam", "radio"}, {"bluetooth", "bluetooth"}, {"btmusic", "bluetooth"},
             {"music", "music"}, {"video", "video"}, {"movie", "video"}, {"file", "folder"},
             {"gallery", "image"}, {"photo", "image"}, {"equaliz", "equalizer"}, {"sound", "equalizer"},
@@ -48,8 +48,8 @@ final class AppIcons {
     };
 
     static {
-        KNOWN.put("com.imotor.phoneconnect/.Carplay", R.drawable.glyph_car);
-        KNOWN.put("com.imotor.phoneconnect/.AndroidAuto", R.drawable.glyph_car);
+        KNOWN.put("com.imotor.phoneconnect/.Carplay", R.drawable.glyph_iphone);
+        KNOWN.put("com.imotor.phoneconnect/.AndroidAuto", R.drawable.glyph_android);
         KNOWN.put("com.imotor.contacts", R.drawable.glyph_phone);
         KNOWN.put("com.imotor.dialer", R.drawable.glyph_phone);
         KNOWN.put("com.imotor.fmam", R.drawable.glyph_radio);
@@ -141,6 +141,8 @@ final class AppIcons {
     private static int glyphId(String name) {
         switch (name) {
             case "car": return R.drawable.glyph_car;
+            case "iphone": return R.drawable.glyph_iphone;
+            case "android": return R.drawable.glyph_android;
             case "radio": return R.drawable.glyph_radio;
             case "bluetooth": return R.drawable.glyph_bluetooth;
             case "music": return R.drawable.glyph_music;

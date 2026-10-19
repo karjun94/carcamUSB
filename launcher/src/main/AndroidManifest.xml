@@ -47,6 +47,13 @@
         </activity>
 
         <activity
+            android:name=".RearViewActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+
+        <activity
             android:name=".HomeSettingsActivity"
             android:exported="false"
             android:label="CarHome settings"

@@ -30,6 +30,13 @@ final class HomePrefs {
         return get(c).getBoolean("nav_card", true);
     }
 
+    // --- Home screen --------------------------------------------------------------------------
+
+    /** CarHome-style icons for the head unit's built-in apps (see AppIcons). */
+    static boolean matchingIcons(Context c) {
+        return get(c).getBoolean("matching_icons", true);
+    }
+
     // --- Parking mode -----------------------------------------------------------------------
 
     static boolean parkingMode(Context c) {

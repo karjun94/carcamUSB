@@ -249,6 +249,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
     protected void onResume() {
         super.onResume();
         buildTiles();
+        buildAppPages();
         connectMedia();
         startLocation();
         mResumed = true;
@@ -265,7 +266,9 @@ public class HomeActivity extends Activity implements LocationListener, android.
     protected void onPause() {
         mResumed = false;
         MediaListener.setNavListener(null);
-        setCameraExpanded(false);
+        // Keep the full-screen camera "open" while in the background (the steering
+        // button's own app, e.g. the dialer for Call, briefly covers us); the stream
+        // stops below and restarts on resume. A plain Home press closes it (onNewIntent).
         mCardCamera.stop();
         mSensors.unregisterListener(this);
         mHandler.removeCallbacks(mTick);
@@ -401,13 +404,9 @@ public class HomeActivity extends Activity implements LocationListener, android.
             String label;
             if (appsTile) {
                 label = "All apps";
-            } else if (pkg != null && pm.getLaunchIntentForPackage(pkg) != null) {
-                try {
-                    icon = pm.getApplicationIcon(pkg);
-                    label = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
-                } catch (PackageManager.NameNotFoundException e) {
-                    label = SLOT_NAMES[slot];
-                }
+            } else if (pkg != null && AppIcons.launchIntent(this, pkg) != null) {
+                icon = AppIcons.icon(this, pkg);
+                label = AppIcons.label(this, pkg);
             } else if (slot == SLOT_CAMERA) {
                 label = "Front camera";
             } else {
@@ -425,8 +424,9 @@ public class HomeActivity extends Activity implements LocationListener, android.
             if (icon != null) {
                 iv.setImageDrawable(icon);
             } else if (!appsTile && slot == SLOT_CAMERA) {
-                iv.setImageResource(com.karjun.dmaxcam.core.R.drawable.ic_videocam);
-                iv.setImageTintList(ColorStateList.valueOf(mPalette.accent));
+                iv.setImageDrawable(AppIcons.glyphTile(this, com.karjun.dmaxcam.core.R.drawable.ic_videocam));
+            } else if (appsTile) {
+                iv.setImageDrawable(AppIcons.glyphTile(this, R.drawable.ic_apps));
             } else {
                 iv.setImageResource(R.drawable.ic_apps);
                 iv.setImageTintList(ColorStateList.valueOf(mPalette.accent));
@@ -965,10 +965,14 @@ public class HomeActivity extends Activity implements LocationListener, android.
     /** Rebuilds the swipe pages of app icons after the dashboard (page 0). */
     private void buildAppPages() {
         if (mPalette == null || mPager.getWidth() == 0) return;
-        // CarPlay-style: 4x2 on wide (16:9 and wider) screens, 4x3 on squarer (4:3) ones.
+        // CarPlay-style 4 columns. Rows follow the real screen size: about one row per
+        // 200dp of height (3 on a 720p head unit, 2 on a phone in landscape), and at
+        // least 3 on squarer (4:3) screens.
+        float density = getResources().getDisplayMetrics().density;
         float aspect = (float) mPager.getWidth() / mPager.getHeight();
         int cols = 4;
-        int rows = aspect < 1.55f ? 3 : 2;
+        int rows = Math.max(2, Math.min(4, (int) ((mPager.getHeight() / density - 40) / 200)));
+        if (aspect < 1.55f) rows = Math.max(rows, 3);
         int perPage = cols * rows;
         // Icon size: CarPlay-like 72dp, smaller if the cell cannot fit it plus its label.
         int cellH = (mPager.getHeight() - dp(40)) / rows - dp(8);
@@ -1002,10 +1006,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
                 iv.setBackground(mPalette.chip(this));
                 iv.setPadding(iconSize / 5, iconSize / 5, iconSize / 5, iconSize / 5);
             } else {
-                try {
-                    iv.setImageDrawable(pm.getApplicationIcon(pkg));
-                } catch (PackageManager.NameNotFoundException ignored) {
-                }
+                iv.setImageDrawable(AppIcons.icon(this, pkg));
             }
             iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
             cell.addView(iv, new LinearLayout.LayoutParams(iconSize, iconSize));
@@ -1071,7 +1072,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
         java.util.Set<String> hidden = hiddenApps();
         List<String[]> apps = new ArrayList<>();
         for (String[] app : launchableApps(true)) {
-            if (hidden.contains(app[1])) apps.add(app);
+            if (hidden.contains(app[1]) || hidden.contains(AppIcons.pkg(app[1]))) apps.add(app);
         }
         String[] labels = new String[apps.size()];
         boolean[] checked = new boolean[apps.size()];
@@ -1080,7 +1081,11 @@ public class HomeActivity extends Activity implements LocationListener, android.
                 .setTitle("Show again in the app drawer")
                 .setMultiChoiceItems(labels, checked, (d, which, isChecked) -> checked[which] = isChecked)
                 .setPositiveButton("Show", (d, w) -> {
-                    for (int i = 0; i < apps.size(); i++) if (checked[i]) hidden.remove(apps.get(i)[1]);
+                    for (int i = 0; i < apps.size(); i++) {
+                        if (!checked[i]) continue;
+                        hidden.remove(apps.get(i)[1]);
+                        hidden.remove(AppIcons.pkg(apps.get(i)[1]));
+                    }
                     setHiddenApps(hidden);
                 })
                 .setNegativeButton("Cancel", null)
@@ -1132,8 +1137,10 @@ public class HomeActivity extends Activity implements LocationListener, android.
         List<String[]> apps = new ArrayList<>();
         for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
             String pkg = ri.activityInfo.packageName;
-            if (pkg.equals(getPackageName()) || hidden.contains(pkg)) continue;
-            apps.add(new String[]{ri.loadLabel(pm).toString(), pkg});
+            String key = new ComponentName(pkg, ri.activityInfo.name).flattenToShortString();
+            // Older versions hid whole packages; still honour those.
+            if (pkg.equals(getPackageName()) || hidden.contains(key) || hidden.contains(pkg)) continue;
+            apps.add(new String[]{AppIcons.label(this, key), key});
         }
         Collections.sort(apps, (a, b) -> a[0].compareToIgnoreCase(b[0]));
         return apps;
@@ -1177,10 +1184,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
                 row.setGravity(Gravity.CENTER_VERTICAL);
                 row.setPadding(dp(20), dp(10), dp(20), dp(10));
                 ImageView iv = new ImageView(HomeActivity.this);
-                try {
-                    iv.setImageDrawable(pm.getApplicationIcon(apps.get(i)[1]));
-                } catch (PackageManager.NameNotFoundException ignored) {
-                }
+                iv.setImageDrawable(AppIcons.icon(HomeActivity.this, apps.get(i)[1]));
                 row.addView(iv, new LinearLayout.LayoutParams(dp(40), dp(40)));
                 TextView tv = new TextView(HomeActivity.this);
                 tv.setText(apps.get(i)[0]);
@@ -1197,8 +1201,9 @@ public class HomeActivity extends Activity implements LocationListener, android.
                 .show();
     }
 
-    private boolean launch(String pkg) {
-        Intent intent = getPackageManager().getLaunchIntentForPackage(pkg);
+    /** @param key package name or "pkg/.Activity" (see AppIcons). */
+    private boolean launch(String key) {
+        Intent intent = AppIcons.launchIntent(this, key);
         if (intent == null) return false;
         startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         return true;
@@ -1398,13 +1403,8 @@ public class HomeActivity extends Activity implements LocationListener, android.
         mArt.setPadding(dp(24), dp(24), dp(24), dp(24));
     }
 
-    private String appLabel(String pkg) {
-        try {
-            PackageManager pm = getPackageManager();
-            return pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
-        } catch (PackageManager.NameNotFoundException e) {
-            return pkg;
-        }
+    private String appLabel(String key) {
+        return AppIcons.label(this, key);
     }
 
     // ---- Speed (GPS) ----------------------------------------------------------------------

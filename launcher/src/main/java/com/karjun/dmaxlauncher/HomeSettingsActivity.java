@@ -85,6 +85,30 @@ public class HomeSettingsActivity extends Activity {
                 HomePrefs.parkingHideAbove(this), 5, 60);
         columns.addView(driving, column(dp(12)));
 
+        // --- Home screen ---
+        LinearLayout home = card("Home screen");
+        switchRow(home, "Matching icons", "Same style for the unit's built-in apps (Radio, Music, Settings…)",
+                "matching_icons", HomePrefs.matchingIcons(this));
+        Button defaultHome = new Button(this);
+        defaultHome.setText("Choose default Home app");
+        defaultHome.setAllCaps(false);
+        defaultHome.setTextSize(17);
+        defaultHome.setTextColor(getColor(com.karjun.dmaxcam.core.R.color.accent));
+        defaultHome.setBackgroundResource(com.karjun.dmaxcam.core.R.drawable.button_outline);
+        defaultHome.setOnClickListener(v -> openHomeSettings());
+        LinearLayout.LayoutParams dhLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(56));
+        dhLp.topMargin = dp(8);
+        home.addView(defaultHome, dhLp);
+        TextView homeNote = new TextView(this, null, 0, STYLE_HINT);
+        homeNote.setText("Pick CarHome to keep it as the Home screen, or switch back to the original launcher.");
+        homeNote.setPadding(0, dp(8), 0, 0);
+        home.addView(homeNote);
+        LinearLayout.LayoutParams homeLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        homeLp.topMargin = dp(12);
+        root.addView(home, homeLp);
+
         Button camera = new Button(this);
         camera.setText("Camera settings (steering button, guide lines, mirror)");
         camera.setAllCaps(false);
@@ -120,6 +144,19 @@ public class HomeSettingsActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
         refresh();
+    }
+
+    /** Android's "Home app" chooser; older or trimmed firmware may only have the general screens. */
+    private void openHomeSettings() {
+        String[] actions = {android.provider.Settings.ACTION_HOME_SETTINGS,
+                "android.settings.MANAGE_DEFAULT_APPS_SETTINGS", android.provider.Settings.ACTION_SETTINGS};
+        for (String action : actions) {
+            try {
+                startActivity(new Intent(action));
+                return;
+            } catch (android.content.ActivityNotFoundException ignored) {
+            }
+        }
     }
 
     private void refresh() {

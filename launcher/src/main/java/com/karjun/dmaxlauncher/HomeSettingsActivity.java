@@ -29,6 +29,12 @@ public class HomeSettingsActivity extends Activity {
     private static final int STYLE_TITLE = com.karjun.dmaxcam.core.R.style.RowTitle;
     private static final int STYLE_HINT = com.karjun.dmaxcam.core.R.style.RowHint;
 
+    /**
+     * Donation page. Fine for the GitHub / sideloaded build; a Google Play build must
+     * not link out for payments (use Play Billing there instead).
+     */
+    private static final String SUPPORT_URL = "https://ko-fi.com/chopsign";
+
     private SharedPreferences mPrefs;
     private TextView mStartAppValue;
     private TextView mShowBelowValue, mHideAboveValue;
@@ -90,6 +96,24 @@ public class HomeSettingsActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(56));
         camLp.topMargin = dp(16);
         root.addView(camera, camLp);
+
+        Button support = new Button(this);
+        support.setText("☕  Support CarHome on Ko-fi");
+        support.setAllCaps(false);
+        support.setTextSize(17);
+        support.setTextColor(getColor(com.karjun.dmaxcam.core.R.color.on_accent));
+        support.setBackgroundResource(com.karjun.dmaxcam.core.R.drawable.button_primary);
+        support.setOnClickListener(v -> {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(SUPPORT_URL)));
+            } catch (android.content.ActivityNotFoundException e) {
+                android.widget.Toast.makeText(this, SUPPORT_URL, android.widget.Toast.LENGTH_LONG).show();
+            }
+        });
+        LinearLayout.LayoutParams supLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(56));
+        supLp.topMargin = dp(12);
+        root.addView(support, supLp);
 
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(getColor(com.karjun.dmaxcam.core.R.color.bg));

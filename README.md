@@ -10,6 +10,8 @@ Two ad-free Android apps for the head unit in an Isuzu D-Max, tested on a 2024 1
 
 Install one or both. If both are installed, **CarHome handles the steering button**, so one press never opens two cameras.
 
+Both apps are free and ad-free. If they're useful to you, you can [buy me a coffee on Ko-fi](https://ko-fi.com/chopsign) ☕
+
 Built and tested on an **iMotor** head unit (Rockchip RK3326, Android 11, 32-bit, model `SL900CA_DTSSKL`), and on a Pixel 3 phone.
 
 ## CarHome
@@ -100,3 +102,6 @@ Install CarHome and set it as the Home app. Then:
 
 ## Credits
 USB camera support comes from [UVCAndroid](https://github.com/shiyinghan/UVCAndroid) (Apache 2.0).
+
+## Support
+If CarHome or D-Max Cam is useful in your car, support the project at **[ko-fi.com/chopsign](https://ko-fi.com/chopsign)**. Thank you!

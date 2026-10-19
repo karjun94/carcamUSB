@@ -1298,6 +1298,11 @@ public class HomeActivity extends Activity implements LocationListener, android.
         // Remembered for "resume music when the car starts".
         if (playing) mPrefs.edit().putString("last_music_pkg", mController.getPackageName()).apply();
         mPlay.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
+        // Only offer what the player accepts right now: YouTube Music, for one, turns
+        // "next" off at times, and sending it anyway leaves the player stopped.
+        long actions = state == null ? 0 : state.getActions();
+        setControlEnabled(mNext, (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0);
+        setControlEnabled(mPrev, (actions & PlaybackState.ACTION_SKIP_TO_PREVIOUS) != 0);
         mControls.setVisibility(View.VISIBLE);
     }
 
@@ -1359,6 +1364,11 @@ public class HomeActivity extends Activity implements LocationListener, android.
                 updateMedia();
             });
         }, "art").start();
+    }
+
+    private static void setControlEnabled(View button, boolean enabled) {
+        button.setEnabled(enabled);
+        button.setAlpha(enabled ? 1f : 0.3f);
     }
 
     private void showMediaPlaceholder(String source, String title, String subtitle) {

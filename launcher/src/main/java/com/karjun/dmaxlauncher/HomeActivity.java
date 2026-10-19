@@ -90,6 +90,9 @@ public class HomeActivity extends Activity implements LocationListener {
     private FrameLayout mCameraCard;
     private CardCamera mCardCamera;
     private ImageButton mSwapButton;
+    private FrameLayout mCardHolder;
+    /** Full-screen layer the camera card moves into when expanded. */
+    private FrameLayout mExpanded;
 
     private LocationManager mLocationManager;
     private long mLastFixAt;
@@ -125,6 +128,11 @@ public class HomeActivity extends Activity implements LocationListener {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(16), Gravity.BOTTOM);
         dotsLp.bottomMargin = dp(2);
         frame.addView(mDots, dotsLp);
+        mExpanded = new FrameLayout(this);
+        mExpanded.setBackgroundColor(Color.BLACK);
+        mExpanded.setVisibility(View.GONE);
+        frame.addView(mExpanded, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(frame);
         mPager.setOnPageChanged(page -> updateDots());
         // App pages depend on the screen size, so (re)build them once it is known.
@@ -207,6 +215,7 @@ public class HomeActivity extends Activity implements LocationListener {
 
     @Override
     protected void onPause() {
+        setCameraExpanded(false);
         mCardCamera.stop();
         mHandler.removeCallbacks(mTick);
         super.onPause();
@@ -222,7 +231,11 @@ public class HomeActivity extends Activity implements LocationListener {
 
     @Override
     public void onBackPressed() {
-        // We are the home screen: Back only returns to the dashboard page.
+        // We are the home screen: Back closes the big camera, otherwise returns to the dashboard.
+        if (mCameraCard.getParent() == mExpanded) {
+            setCameraExpanded(false);
+            return;
+        }
         mPager.setPage(0, true);
     }
 
@@ -230,6 +243,7 @@ public class HomeActivity extends Activity implements LocationListener {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         // Home pressed while already showing: go back to the dashboard, like CarPlay.
+        setCameraExpanded(false);
         mPager.setPage(0, true);
     }
 
@@ -259,9 +273,7 @@ public class HomeActivity extends Activity implements LocationListener {
         getWindow().getDecorView().setSystemUiVisibility(flags);
         for (View card : new View[]{mClockCard, mSpeedCard, mMediaCard}) card.setBackground(p.card(this));
         if (mCameraCard != null) {
-            GradientDrawable camBg = p.card(this);
-            camBg.setColor(Color.BLACK);
-            mCameraCard.setBackground(camBg);
+            if (mCameraCard.getParent() != mExpanded) mCameraCard.setBackground(cameraCardBackground());
             ((TextView) mCameraCard.getChildAt(1)).setTextColor(0xFFE8EDF2);
             mSwapButton.setBackground(p.chip(this));
             mSwapButton.setImageTintList(ColorStateList.valueOf(p.accent));
@@ -439,10 +451,7 @@ public class HomeActivity extends Activity implements LocationListener {
         status.setGravity(Gravity.CENTER);
         mCameraCard.addView(status, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        mCameraCard.setOnClickListener(v -> {
-            // Full-screen camera, with guide lines, in D-Max Cam.
-            if (!launch(CAMERA_APP)) setLeftCard(false);
-        });
+        mCameraCard.setOnClickListener(v -> setCameraExpanded(mCameraCard.getParent() != mExpanded));
         holder.addView(mCameraCard, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         mCardCamera = new CardCamera(preview, status);
@@ -458,6 +467,64 @@ public class HomeActivity extends Activity implements LocationListener {
         holder.addView(mSwapButton, swapLp);
 
         column.addView(holder, index, cardLp);
+        mCardHolder = holder;
+
+        // In the full-screen view: a shortcut to D-Max Cam for guide lines / mirror.
+        TextView guides = new TextView(this);
+        guides.setText("Guide lines view");
+        guides.setTextColor(0xFF0B1A19);
+        guides.setTextSize(16);
+        guides.setTypeface(null, android.graphics.Typeface.BOLD);
+        guides.setGravity(Gravity.CENTER);
+        guides.setPadding(dp(20), dp(12), dp(20), dp(12));
+        GradientDrawable pill = new GradientDrawable();
+        pill.setColor(0xFF2EC4B6);
+        pill.setCornerRadius(dp(24));
+        guides.setBackground(pill);
+        guides.setOnClickListener(v -> {
+            setCameraExpanded(false);
+            launch(CAMERA_APP);
+        });
+        FrameLayout.LayoutParams gLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
+        gLp.setMargins(0, 0, dp(16), dp(16));
+        mExpanded.addView(guides, gLp);
+        mExpanded.setTag(guides);
+    }
+
+    /**
+     * Moves the live camera view between its card and the full-screen layer.
+     * The camera keeps running; only the view is re-parented, so there is no reopen.
+     */
+    private void setCameraExpanded(boolean expand) {
+        boolean expanded = mCameraCard.getParent() == mExpanded;
+        if (expand == expanded) return;
+        ((ViewGroup) mCameraCard.getParent()).removeView(mCameraCard);
+        if (expand) {
+            mExpanded.addView(mCameraCard, 0, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            // Edge to edge: no card corners or border while full screen.
+            mCameraCard.setBackgroundColor(Color.BLACK);
+            mCameraCard.setClipToOutline(false);
+            View guides = (View) mExpanded.getTag();
+            guides.setVisibility(getPackageManager().getLaunchIntentForPackage(CAMERA_APP) != null
+                    ? View.VISIBLE : View.GONE);
+            mExpanded.setVisibility(View.VISIBLE);
+        } else {
+            mExpanded.setVisibility(View.GONE);
+            // Back in the card, under the swap button.
+            mCardHolder.addView(mCameraCard, 1, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            mCameraCard.setBackground(cameraCardBackground());
+            mCameraCard.setClipToOutline(true);
+        }
+    }
+
+    /** Black card with the theme's rounded corners and border. */
+    private GradientDrawable cameraCardBackground() {
+        GradientDrawable bg = mPalette.card(this);
+        bg.setColor(Color.BLACK);
+        return bg;
     }
 
     private void setLeftCard(boolean camera) {

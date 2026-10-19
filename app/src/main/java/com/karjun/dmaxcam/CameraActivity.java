@@ -37,6 +37,13 @@ public class CameraActivity extends Activity {
 
     private static volatile boolean sResumed;
 
+    // The launcher's camera card may still be letting go of the camera when we open it
+    // (or the other way round), so a failed open is retried a few times.
+    private static final int MAX_RETRIES = 5;
+    private static final long RETRY_MS = 600;
+    private final android.os.Handler mRetryHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private int mRetries;
+
     private ICameraHelper mCameraHelper;
     // A TextureView (not SurfaceView) so the picture can be mirrored with setScaleX.
     private AspectRatioTextureView mPreview;
@@ -212,6 +219,8 @@ public class CameraActivity extends Activity {
 
     @Override
     protected void onStop() {
+        mRetryHandler.removeCallbacksAndMessages(null);
+        mRetries = 0;
         if (mCameraHelper != null) {
             mCameraHelper.release();
             mCameraHelper = null;
@@ -259,6 +268,7 @@ public class CameraActivity extends Activity {
         @Override
         public void onCameraOpen(UsbDevice device) {
             if (mCameraHelper == null) return;
+            mRetries = 0;
             mCameraHelper.startPreview();
             Size size = mCameraHelper.getPreviewSize();
             if (size != null) {
@@ -292,6 +302,14 @@ public class CameraActivity extends Activity {
         @Override
         public void onError(UsbDevice device, CameraException e) {
             Log.e(TAG, "camera error", e);
+            if (mRetries < MAX_RETRIES) {
+                mRetries++;
+                showStatus("Connecting to camera…");
+                mRetryHandler.postDelayed(() -> {
+                    if (mCameraHelper != null) mCameraHelper.selectDevice(device);
+                }, RETRY_MS);
+                return;
+            }
             showStatus("Camera error: " + e.getMessage());
         }
     };

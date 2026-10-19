@@ -22,6 +22,13 @@ final class CardCamera {
     private final TextView mStatus;
     private ICameraHelper mHelper;
 
+    // The D-Max Cam app may still be letting go of the camera when we open it
+    // (when the camera is handed back to the dashboard), so a failed open is retried a few times.
+    private static final int MAX_RETRIES = 5;
+    private static final long RETRY_MS = 600;
+    private final android.os.Handler mRetryHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private int mRetries;
+
     CardCamera(AspectRatioTextureView view, TextView status) {
         mView = view;
         mStatus = status;
@@ -58,6 +65,8 @@ final class CardCamera {
     }
 
     void stop() {
+        mRetryHandler.removeCallbacksAndMessages(null);
+        mRetries = 0;
         if (mHelper == null) return;
         mHelper.release();
         mHelper = null;
@@ -97,6 +106,7 @@ final class CardCamera {
         @Override
         public void onCameraOpen(UsbDevice device) {
             if (mHelper == null) return;
+            mRetries = 0;
             mHelper.startPreview();
             Size size = mHelper.getPreviewSize();
             if (size != null) mView.post(() -> mView.setAspectRatio(size.width, size.height));
@@ -127,6 +137,14 @@ final class CardCamera {
 
         @Override
         public void onError(UsbDevice device, CameraException e) {
+            if (mRetries < MAX_RETRIES) {
+                mRetries++;
+                status("Connecting to camera…");
+                mRetryHandler.postDelayed(() -> {
+                    if (mHelper != null) mHelper.selectDevice(device);
+                }, RETRY_MS);
+                return;
+            }
             status("Camera error");
         }
     };

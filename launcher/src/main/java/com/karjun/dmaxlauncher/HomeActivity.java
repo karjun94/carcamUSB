@@ -354,8 +354,6 @@ public class HomeActivity extends Activity implements LocationListener, android.
             ((TextView) mCameraCard.getChildAt(1)).setTextColor(0xFFE8EDF2);
             mSwapButton.setBackground(p.chip(this));
             mCompass.setBackground(p.card(this));
-            mNavCard.setBackground(p.card(this));
-            mNavCard.setPadding(dp(20), dp(20), dp(20), dp(20));
             mNavDistance.setTextColor(p.text);
             mNavInstruction.setTextColor(p.text);
             mNavFooter.setTextColor(p.textSecondary);
@@ -531,39 +529,66 @@ public class HomeActivity extends Activity implements LocationListener, android.
     private void setUpClockCardExtras() {
         FrameLayout clock = (FrameLayout) mClockCard;
 
+        // Fills the clock card (same padding) while Waze / Maps is navigating.
         mNavCard = new LinearLayout(this);
         mNavCard.setOrientation(LinearLayout.HORIZONTAL);
         mNavCard.setGravity(Gravity.CENTER_VERTICAL);
         mNavCard.setVisibility(View.GONE);
         mNavArrow = new ImageView(this);
         mNavArrow.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        mNavCard.addView(mNavArrow, new LinearLayout.LayoutParams(dp(96), dp(96)));
+        // Maps / Waze draw white arrows: give them a coloured disc to sit on.
+        GradientDrawable disc = new GradientDrawable();
+        disc.setShape(GradientDrawable.OVAL);
+        disc.setColor(0xFF1E8F85);
+        mNavArrow.setBackground(disc);
+        mNavCard.addView(mNavArrow, new LinearLayout.LayoutParams(dp(88), dp(88)));
         LinearLayout texts = new LinearLayout(this);
         texts.setOrientation(LinearLayout.VERTICAL);
+        texts.setGravity(Gravity.CENTER_VERTICAL);
         mNavDistance = new TextView(this);
-        mNavDistance.setTextSize(40);
         mNavDistance.setTypeface(null, android.graphics.Typeface.BOLD);
         mNavDistance.setMaxLines(1);
+        mNavDistance.setIncludeFontPadding(false);
         mNavInstruction = new TextView(this);
-        mNavInstruction.setTextSize(20);
+        mNavInstruction.setTextSize(18);
         mNavInstruction.setMaxLines(2);
         mNavInstruction.setEllipsize(android.text.TextUtils.TruncateAt.END);
         mNavFooter = new TextView(this);
         mNavFooter.setTextSize(14);
-        mNavFooter.setPadding(0, dp(6), 0, 0);
-        texts.addView(mNavDistance);
+        mNavFooter.setMaxLines(1);
+        mNavFooter.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        mNavFooter.setPadding(0, dp(4), 0, 0);
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            mNavDistance.setAutoSizeTextTypeUniformWithConfiguration(24, 56, 2,
+                    android.util.TypedValue.COMPLEX_UNIT_SP);
+        } else {
+            mNavDistance.setTextSize(36);
+        }
+        texts.addView(mNavDistance, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(60)));
         texts.addView(mNavInstruction);
         texts.addView(mNavFooter);
-        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        tlp.setMarginStart(dp(16));
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+        tlp.setMarginStart(dp(18));
         mNavCard.addView(texts, tlp);
         mNavCard.setOnClickListener(v -> {
             MediaListener.Nav nav = MediaListener.currentNav();
             if (nav != null) launch(nav.pkg);
         });
-        // Above the clock, below the corner buttons.
-        clock.addView(mNavCard, 1, new FrameLayout.LayoutParams(
+        clock.addView(mNavCard, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // Arrow disc scales with the card height (phones vs. big head-unit screens).
+        clock.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (b - t == ob - ot) return;
+            int size = Math.max(dp(56), Math.min(dp(120), (int) ((b - t - v.getPaddingTop() - v.getPaddingBottom()) * 0.7f)));
+            v.post(() -> {
+                ViewGroup.LayoutParams lp = mNavArrow.getLayoutParams();
+                if (lp.width == size) return;
+                lp.width = size;
+                lp.height = size;
+                mNavArrow.setLayoutParams(lp);
+                mNavArrow.setPadding(size / 6, size / 6, size / 6, size / 6);
+            });
+        });
 
         mHomeSettings = new ImageButton(this);
         mHomeSettings.setImageResource(R.drawable.ic_settings);
@@ -578,11 +603,18 @@ public class HomeActivity extends Activity implements LocationListener, android.
     private void showNav(MediaListener.Nav nav) {
         boolean show = nav != null && HomePrefs.navCard(this);
         mNavCard.setVisibility(show ? View.VISIBLE : View.GONE);
+        // The clock and its corner buttons make way for the turn while navigating.
+        int clockVis = show ? View.INVISIBLE : View.VISIBLE;
+        ((ViewGroup) mClockCard).getChildAt(0).setVisibility(clockVis);
+        mThemeButton.setVisibility(clockVis);
+        mThemeLabel.setVisibility(clockVis);
+        mHomeSettings.setVisibility(clockVis);
         if (!show) return;
-        mNavDistance.setText(nav.distance);
-        mNavInstruction.setText(nav.instruction);
-        mNavFooter.setText(new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                .format(new java.util.Date()) + "  ·  " + appLabel(nav.pkg));
+        // Plain text: the apps' own styling (spans) renders oddly at our sizes.
+        mNavDistance.setText(nav.distance == null ? "" : nav.distance.toString());
+        mNavInstruction.setText(nav.instruction == null ? "" : nav.instruction.toString());
+        String now = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(new java.util.Date());
+        mNavFooter.setText(nav.trip != null ? nav.trip.toString() : now + "  ·  " + appLabel(nav.pkg));
         if (nav.arrow != null) {
             mNavArrow.setImageDrawable(nav.arrow);
         } else {

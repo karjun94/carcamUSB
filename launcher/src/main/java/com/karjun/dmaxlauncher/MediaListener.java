@@ -25,12 +25,14 @@ public class MediaListener extends NotificationListenerService {
         final String pkg;
         final CharSequence distance;   // e.g. "300 m"
         final CharSequence instruction; // e.g. "Turn right onto Jalan Ampang"
+        final CharSequence trip;       // e.g. "13 min · 6.6 km · 11:32 am ETA", may be null
         final Drawable arrow;          // turn arrow from the app, may be null
 
-        Nav(String pkg, CharSequence distance, CharSequence instruction, Drawable arrow) {
+        Nav(String pkg, CharSequence distance, CharSequence instruction, CharSequence trip, Drawable arrow) {
             this.pkg = pkg;
             this.distance = distance;
             this.instruction = instruction;
+            this.trip = trip;
             this.arrow = arrow;
         }
     }
@@ -70,7 +72,8 @@ public class MediaListener extends NotificationListenerService {
         CharSequence title = extras.getCharSequence(Notification.EXTRA_TITLE);
         CharSequence text = extras.getCharSequence(Notification.EXTRA_TEXT);
         if (title == null && text == null) return;
-        publish(new Nav(sbn.getPackageName(), title, text, largeIcon(n)));
+        CharSequence sub = extras.getCharSequence(Notification.EXTRA_SUB_TEXT);
+        publish(new Nav(sbn.getPackageName(), title, text, sub, largeIcon(n)));
     }
 
     @Override

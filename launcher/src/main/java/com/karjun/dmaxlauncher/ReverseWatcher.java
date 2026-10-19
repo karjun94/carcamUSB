@@ -15,10 +15,10 @@ import com.karjun.dmaxcam.core.CameraActions;
  * of reverse), bring up CarHome's front camera for a few seconds, like 360
  * camera systems do when you pull out of a parking space.
  *
- * The iMotor firmware announces the reverse camera with the broadcasts
- * android.backcar.action.PREPARE_START (reverse in) and
- * android.backcar.action.FINISH (reverse out); the GLink CarPlay app listens to
- * the same ones.
+ * Reverse in/out comes from the shared log watcher (iMotor logs
+ * "onVehicleReverseSignalChanged"); the android.backcar.action.PREPARE_START /
+ * FINISH broadcasts the GLink CarPlay app listens for are also accepted, for
+ * firmwares that send them.
  */
 final class ReverseWatcher {
     private static final String TAG = "CarHomeReverse";
@@ -44,12 +44,17 @@ final class ReverseWatcher {
         Handler main = new Handler(Looper.getMainLooper());
         IntentFilter filter = new IntentFilter(START);
         filter.addAction(FINISH);
+        // This firmware does not send the backcar broadcasts; the log watcher reports reverse.
+        filter.addAction(CameraActions.ACTION_REVERSE_CHANGED);
         app.registerReceiver(new BroadcastReceiver() {
             @Override
             public void onReceive(Context c, Intent intent) {
                 long now = android.os.SystemClock.elapsedRealtime();
-                Log.d(TAG, intent.getAction());
-                if (START.equals(intent.getAction())) {
+                Log.d(TAG, intent.getAction() + " " + intent.getExtras());
+                boolean reverseIn = START.equals(intent.getAction())
+                        || (CameraActions.ACTION_REVERSE_CHANGED.equals(intent.getAction())
+                        && intent.getBooleanExtra(CameraActions.EXTRA_REVERSE, false));
+                if (reverseIn) {
                     sReverseStartedAt = now;
                     return;
                 }
@@ -57,6 +62,7 @@ final class ReverseWatcher {
                 sReverseStartedAt = 0;
                 if (!wasReversing || !HomePrefs.frontAfterReverse(c)) return;
                 long showFor = HomePrefs.frontAfterReverseSecs(c) * 1000L;
+                main.removeCallbacksAndMessages(null);
                 main.postDelayed(() -> c.startActivity(new Intent(CameraActions.ACTION_OPEN)
                         .setPackage(c.getPackageName())
                         .putExtra(EXTRA_AUTO_CLOSE_MS, showFor)

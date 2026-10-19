@@ -17,6 +17,13 @@ public final class CameraActions {
     /** Open the camera in guide-line adjust mode. */
     public static final String ACTION_ADJUST = "com.karjun.dmaxcam.action.ADJUST_GUIDES";
 
+    /**
+     * Reverse gear in / out, sent to our own package by KeyWatchService (boolean extra
+     * EXTRA_REVERSE). iMotor logs it as "IMPowerManagerService: onVehicleReverseSignalChanged".
+     */
+    public static final String ACTION_REVERSE_CHANGED = "com.karjun.dmaxcam.action.REVERSE_CHANGED";
+    public static final String EXTRA_REVERSE = "reverse";
+
     /** The launcher, which has the camera built in. */
     public static final String LAUNCHER_PACKAGE = "com.karjun.dmaxlauncher";
 

@@ -27,6 +27,8 @@ public class KeyWatchService extends Service {
     private static final String CHANNEL = "keywatch";
     // Logged once per key by the vendor policy: "interceptKeyBeforeQueueing event = KeyEvent { action=ACTION_UP, keyCode=KEYCODE_CALL, ..."
     private static final String MATCH_QUEUEING = "interceptKeyBeforeQueueing";
+    // "IMPowerManagerService: onVehicleReverseSignalChanged new reverse = true"
+    private static final Pattern REVERSE = Pattern.compile("onVehicleReverseSignalChanged new reverse = (true|false)");
     private static final Pattern KEY_UP = Pattern.compile("action=ACTION_UP, keyCode=(KEYCODE_\\w+)");
     private static final long DEBOUNCE_MS = 800;
     // The key's own app (dialer, voice assistant...) opens first; launch after it so we end up on top.
@@ -82,10 +84,17 @@ public class KeyWatchService extends Service {
             try {
                 // -T 1: start from the newest line so old presses are not replayed.
                 mLogcat = new ProcessBuilder("logcat", "-b", "system", "-v", "brief", "-T", "1",
-                        "InputPolicy:D", "*:S").redirectErrorStream(true).start();
+                        "InputPolicy:D", "IMPowerManagerService:D", "*:S").redirectErrorStream(true).start();
                 BufferedReader reader = new BufferedReader(new InputStreamReader(mLogcat.getInputStream()));
                 String line;
                 while (mRunning && (line = reader.readLine()) != null) {
+                    Matcher rev = REVERSE.matcher(line);
+                    if (rev.find()) {
+                        sendBroadcast(new Intent(CameraActions.ACTION_REVERSE_CHANGED)
+                                .setPackage(getPackageName())
+                                .putExtra(CameraActions.EXTRA_REVERSE, "true".equals(rev.group(1))));
+                        continue;
+                    }
                     if (!line.contains(MATCH_QUEUEING)) continue;
                     Matcher m = KEY_UP.matcher(line);
                     if (m.find()) onKeyUp(m.group(1));

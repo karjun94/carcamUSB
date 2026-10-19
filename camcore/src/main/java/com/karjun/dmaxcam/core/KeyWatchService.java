@@ -36,11 +36,14 @@ public class KeyWatchService extends Service {
     private volatile boolean mRunning;
     private Process mLogcat;
     private long mLastTrigger;
+    private CallGuard mCallGuard;
 
     @Override
     public void onCreate() {
         super.onCreate();
         startForeground(1, buildNotification());
+        mCallGuard = new CallGuard(this);
+        mCallGuard.start();
     }
 
     @Override
@@ -65,6 +68,7 @@ public class KeyWatchService extends Service {
     public void onDestroy() {
         mRunning = false;
         if (mLogcat != null) mLogcat.destroy();
+        if (mCallGuard != null) mCallGuard.stop();
         super.onDestroy();
     }
 
@@ -108,6 +112,11 @@ public class KeyWatchService extends Service {
         long now = SystemClock.elapsedRealtime();
         if (now - mLastTrigger < DEBOUNCE_MS) return;
         mLastTrigger = now;
+        // Pressed to answer / hang up a call (e.g. Hang up as the camera button): leave it be.
+        if (mCallGuard != null && mCallGuard.busy()) {
+            Log.i(TAG, "steering button ignored: phone call in progress");
+            return;
+        }
         if (!CameraActions.isShowing()) SystemClock.sleep(LAUNCH_DELAY_MS);
         CameraActions.send(this, CameraActions.ACTION_TOGGLE);
     }

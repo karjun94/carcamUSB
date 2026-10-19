@@ -6,7 +6,7 @@ import android.content.pm.PackageManager;
 
 /**
  * How the shared pieces (button watcher, settings screen) talk to whichever app
- * hosts the camera: D-Max Cam's CameraActivity, or D-Max Home's built-in view.
+ * hosts the camera: D-Max Cam's CameraActivity, or CarHome's built-in view.
  * Each app declares an activity with intent filters for these actions.
  */
 public final class CameraActions {
@@ -41,7 +41,7 @@ public final class CameraActions {
     }
 
     /**
-     * When D-Max Home is installed it handles the steering button itself, so the
+     * When CarHome is installed it handles the steering button itself, so the
      * standalone D-Max Cam stays quiet; otherwise one press would open two cameras.
      */
     public static boolean deferToLauncher(Context context) {

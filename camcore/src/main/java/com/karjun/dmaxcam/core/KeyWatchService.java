@@ -46,7 +46,7 @@ public class KeyWatchService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         // Without READ_LOGS (granted over ADB on the head unit) there is nothing to watch,
-        // e.g. on a phone reused as a head unit. And D-Max Home takes over from D-Max Cam.
+        // e.g. on a phone reused as a head unit. And CarHome takes over from D-Max Cam.
         boolean canRead = checkSelfPermission(android.Manifest.permission.READ_LOGS)
                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
         if (!canRead || CameraActions.deferToLauncher(this)) {

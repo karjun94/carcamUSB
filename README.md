@@ -1,18 +1,18 @@
-# D-Max Cam and D-Max Home
+# CarHome and D-Max Cam
 
 Two ad-free Android apps for the head unit in an Isuzu D-Max, tested on a 2024 1.9 Auto Plus 4x2. Both also run on an **old Android phone used as a head unit**.
 
 | App | What it is |
 |---|---|
-| **D-Max Home** (`launcher/`) | A CarPlay-style **home screen**: clock, music, speed, compass, a **built-in USB front camera**, and swipeable app pages. |
+| **CarHome** (`launcher/`) | A CarPlay-style **home screen**: clock, music, speed, compass, a **built-in USB front camera**, and swipeable app pages. |
 | **D-Max Cam** (`app/`) | The **camera on its own**, for people who keep their existing launcher. |
 | `camcore/` | Shared camera code used by both: steering-button watcher, guide lines, mirror, camera settings. |
 
-Install one or both. If both are installed, **D-Max Home handles the steering button**, so one press never opens two cameras.
+Install one or both. If both are installed, **CarHome handles the steering button**, so one press never opens two cameras.
 
 Built and tested on an **iMotor** head unit (Rockchip RK3326, Android 11, 32-bit, model `SL900CA_DTSSKL`), and on a Pixel 3 phone.
 
-## D-Max Home
+## CarHome
 - **Dashboard (page 1)**
   - Big clock and date.
   - Now playing: cover art, a scrolling title, and play/pause/skip for any music app. Uses notification access.
@@ -29,7 +29,7 @@ Built and tested on an **iMotor** head unit (Rockchip RK3326, Android 11, 32-bit
 - **Automatic day/night** from sunrise and sunset at your location, offline. Or force Day or Night.
 - **Fits the screen shape**: wide, 4:3, and nearly square, where the cards stack.
 
-Set it as the default with **Settings → Apps → Default apps → Home app → D-Max Home**.
+Set it as the default with **Settings → Apps → Default apps → Home app → CarHome**.
 
 ## D-Max Cam
 - Full-screen USB camera with guide lines, mirror, and the steering-button toggle.
@@ -65,7 +65,7 @@ iMotor firmware **blocks app installs by default**. **[docs/HEADUNIT-UNLOCK.md](
 scripts/headunit-setup.sh <ip>:<port> app/build/outputs/apk/release/app-release.apk
 ```
 
-For **D-Max Home**, install it and grant the same permissions:
+For **CarHome**, install it and grant the same permissions:
 
 ```bash
 adb install -r launcher/build/outputs/apk/release/launcher-release.apk
@@ -81,7 +81,7 @@ adb shell cmd notification allow_listener com.karjun.dmaxlauncher/com.karjun.dma
 - The notification listener is for the now-playing card.
 
 ## Using an old phone as a head unit
-Install D-Max Home and set it as the Home app. Then:
+Install CarHome and set it as the Home app. Then:
 - **Camera:** plug a USB camera into the phone through an **OTG adapter**.
 - **Permissions:** the app asks for location and camera, and taps on the music card take you to notification access.
 - **Steering button:** needs a head unit that logs its keys, so it isn't available on a phone.

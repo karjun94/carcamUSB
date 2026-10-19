@@ -101,7 +101,7 @@ public class SettingsActivity extends Activity {
                 ? "Press the steering button you want to use"
                 : "Press once to open the camera, again to close it";
         if (CameraActions.deferToLauncher(this)) {
-            hint = "D-Max Home is installed and handles the steering button";
+            hint = "CarHome is installed and handles the steering button";
         } else if (checkSelfPermission(android.Manifest.permission.READ_LOGS)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             hint = "Steering button needs log access, granted once over ADB (see README)";

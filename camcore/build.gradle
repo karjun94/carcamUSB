@@ -2,7 +2,7 @@ plugins {
     id 'com.android.library'
 }
 
-// Camera features shared by D-Max Cam (standalone) and D-Max Home (launcher):
+// Camera features shared by D-Max Cam (standalone) and CarHome (launcher):
 // steering-button watcher, guide lines, mirror and the camera settings screen.
 android {
     namespace 'com.karjun.dmaxcam.core'

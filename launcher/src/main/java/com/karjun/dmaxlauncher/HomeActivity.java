@@ -542,7 +542,13 @@ public class HomeActivity extends Activity implements LocationListener, android.
             // smaller if the row (48 + 8 + 60 + 8 + 48 at scale 1) would not fit the width.
             float playPx = Math.max(dp(56), Math.min(dp(110), (b - t) * 0.34f));
             float scale = Math.min(playPx / dp(60), available / (float) dp(172));
+            // Text follows the card height too: title ~13% of it (22–44sp).
+            float sp = getResources().getDisplayMetrics().scaledDensity;
+            float titleSp = Math.max(22f, Math.min(44f, (b - t) * 0.13f / sp));
             v.post(() -> {
+                mTitle.setTextSize(titleSp);
+                mArtist.setTextSize(titleSp * 0.62f);
+                mSource.setTextSize(Math.max(12f, titleSp * 0.45f));
                 sizeButton(mPrev, 48, scale);
                 sizeButton(mPlay, 60, scale);
                 sizeButton(mNext, 48, scale);

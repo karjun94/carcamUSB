@@ -30,6 +30,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
+import android.widget.FrameLayout;
 import android.widget.GridLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -81,6 +82,14 @@ public class HomeActivity extends Activity implements LocationListener {
     private View mControls;
     private ImageButton mPrev, mPlay, mNext;
     private GridLayout mTiles;
+    private SwipePager mPager;
+    private LinearLayout mDots;
+
+    private static final String CAMERA_APP = "com.karjun.dmaxcam";
+    private static final int REQ_CAMERA = 2;
+    private FrameLayout mCameraCard;
+    private CardCamera mCardCamera;
+    private ImageButton mSwapButton;
 
     private LocationManager mLocationManager;
     private long mLastFixAt;
@@ -102,10 +111,31 @@ public class HomeActivity extends Activity implements LocationListener {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_home);
         mPrefs = getSharedPreferences("home", MODE_PRIVATE);
 
-        mRoot = findViewById(R.id.root);
+        // Page 0 is the dashboard; swiping left shows pages of app icons (like CarPlay).
+        FrameLayout frame = new FrameLayout(this);
+        mPager = new SwipePager(this);
+        mPager.addView(getLayoutInflater().inflate(R.layout.activity_home, mPager, false));
+        frame.addView(mPager, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mDots = new LinearLayout(this);
+        mDots.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams dotsLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(16), Gravity.BOTTOM);
+        dotsLp.bottomMargin = dp(2);
+        frame.addView(mDots, dotsLp);
+        setContentView(frame);
+        mPager.setOnPageChanged(page -> updateDots());
+        // App pages depend on the screen size, so (re)build them once it is known.
+        frame.addOnLayoutChangeListener((v, l, t, r, b, oldL, oldT, oldR, oldB) -> {
+            if (r - l != oldR - oldL || b - t != oldB - oldT) {
+                fitDashboard(r - l, b - t);
+                buildAppPages();
+            }
+        });
+
+        mRoot = frame;
         mClockCard = findViewById(R.id.clock_card);
         mSpeedCard = findViewById(R.id.speed_card);
         mMediaCard = findViewById(R.id.media_card);
@@ -155,6 +185,9 @@ public class HomeActivity extends Activity implements LocationListener {
             }
         });
 
+        fitMediaCard();
+        setUpLeftCard();
+
         mSessionManager = (MediaSessionManager) getSystemService(Context.MEDIA_SESSION_SERVICE);
         mListener = new ComponentName(this, MediaListener.class);
         mLocationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
@@ -168,11 +201,13 @@ public class HomeActivity extends Activity implements LocationListener {
         buildTiles();
         connectMedia();
         startLocation();
+        showLeftCard();
         mHandler.post(mTick);
     }
 
     @Override
     protected void onPause() {
+        mCardCamera.stop();
         mHandler.removeCallbacks(mTick);
         super.onPause();
     }
@@ -187,7 +222,15 @@ public class HomeActivity extends Activity implements LocationListener {
 
     @Override
     public void onBackPressed() {
-        // We are the home screen; there is nothing to go back to.
+        // We are the home screen: Back only returns to the dashboard page.
+        mPager.setPage(0, true);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // Home pressed while already showing: go back to the dashboard, like CarPlay.
+        mPager.setPage(0, true);
     }
 
     // ---- Theme ----------------------------------------------------------------------------
@@ -215,6 +258,14 @@ public class HomeActivity extends Activity implements LocationListener {
         else flags &= ~(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         getWindow().getDecorView().setSystemUiVisibility(flags);
         for (View card : new View[]{mClockCard, mSpeedCard, mMediaCard}) card.setBackground(p.card(this));
+        if (mCameraCard != null) {
+            GradientDrawable camBg = p.card(this);
+            camBg.setColor(Color.BLACK);
+            mCameraCard.setBackground(camBg);
+            ((TextView) mCameraCard.getChildAt(1)).setTextColor(0xFFE8EDF2);
+            mSwapButton.setBackground(p.chip(this));
+            mSwapButton.setImageTintList(ColorStateList.valueOf(p.accent));
+        }
         for (TextView t : new TextView[]{mTime, mSpeed, mTitle}) t.setTextColor(p.text);
         for (TextView t : new TextView[]{mDate, mSpeedUnit, mGpsStatus, mArtist}) t.setTextColor(p.textSecondary);
         mSource.setTextColor(p.accent);
@@ -227,6 +278,7 @@ public class HomeActivity extends Activity implements LocationListener {
         mPlay.setBackground(playBg);
         mPlay.setImageTintList(ColorStateList.valueOf(p.onAccent));
         buildTiles();
+        buildAppPages();
         updateMedia();
     }
 
@@ -300,7 +352,7 @@ public class HomeActivity extends Activity implements LocationListener {
 
             final int s = slot;
             if (appsTile) {
-                tile.setOnClickListener(v -> pickApp("All apps", this::launch));
+                tile.setOnClickListener(v -> mPager.setPage(1, true));
             } else {
                 tile.setOnClickListener(v -> {
                     if (pkg != null && launch(pkg)) return;
@@ -322,6 +374,329 @@ public class HomeActivity extends Activity implements LocationListener {
         }
     }
 
+    /**
+     * The music card is the tightest spot on small or squarer screens: drop the
+     * artist line if it would be cut in half, and shrink the buttons row if it is
+     * wider than the space next to the cover.
+     */
+    private void fitMediaCard() {
+        View text = findViewById(R.id.media_text);
+        View column = (View) mControls.getParent();
+        text.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            int needed = mSource.getHeight() + mTitle.getHeight() + mArtist.getHeight() + dp(8);
+            boolean fits = b - t >= needed;
+            int want = fits || mArtist.getText().length() == 0 ? View.VISIBLE : View.GONE;
+            // Only ever hide on a too-small box, so this cannot flip back and forth.
+            if (want == View.GONE && mArtist.getVisibility() != View.GONE) {
+                v.post(() -> mArtist.setVisibility(View.GONE));
+            }
+        });
+        column.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (r - l == or - ol) return;
+            int available = r - l - v.getPaddingLeft() - v.getPaddingRight();
+            // Natural row: 48 + 8 + 60 + 8 + 48 dp.
+            float scale = Math.min(1f, available / (float) dp(172));
+            v.post(() -> {
+                sizeButton(mPrev, 48, scale);
+                sizeButton(mPlay, 60, scale);
+                sizeButton(mNext, 48, scale);
+            });
+        });
+    }
+
+    private void sizeButton(View button, int sizeDp, float scale) {
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) button.getLayoutParams();
+        int size = Math.round(dp(sizeDp) * scale);
+        if (lp.width == size) return;
+        lp.width = size;
+        lp.height = size;
+        button.setLayoutParams(lp);
+    }
+
+    // ---- Speed / camera card --------------------------------------------------------------
+
+    /**
+     * The lower-left card shows either GPS speed or a live USB camera preview.
+     * The swap button in its corner switches; the choice is remembered.
+     */
+    private void setUpLeftCard() {
+        ViewGroup column = (ViewGroup) mSpeedCard.getParent();
+        int index = column.indexOfChild(mSpeedCard);
+        ViewGroup.LayoutParams cardLp = mSpeedCard.getLayoutParams();
+        column.removeView(mSpeedCard);
+
+        FrameLayout holder = new FrameLayout(this);
+        holder.addView(mSpeedCard, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        mCameraCard = new FrameLayout(this);
+        mCameraCard.setClipToOutline(true);
+        com.serenegiant.widget.AspectRatioTextureView preview = new com.serenegiant.widget.AspectRatioTextureView(this);
+        mCameraCard.addView(preview, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        TextView status = new TextView(this);
+        status.setTextSize(16);
+        status.setGravity(Gravity.CENTER);
+        mCameraCard.addView(status, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mCameraCard.setOnClickListener(v -> {
+            // Full-screen camera, with guide lines, in D-Max Cam.
+            if (!launch(CAMERA_APP)) setLeftCard(false);
+        });
+        holder.addView(mCameraCard, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mCardCamera = new CardCamera(preview, status);
+
+        mSwapButton = new ImageButton(this);
+        mSwapButton.setImageResource(R.drawable.ic_swap);
+        mSwapButton.setContentDescription("Swap speed and camera");
+        mSwapButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mSwapButton.setPadding(dp(10), dp(10), dp(10), dp(10));
+        mSwapButton.setOnClickListener(v -> setLeftCard(!mPrefs.getBoolean("left_camera", false)));
+        FrameLayout.LayoutParams swapLp = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP | Gravity.END);
+        swapLp.setMargins(0, dp(8), dp(8), 0);
+        holder.addView(mSwapButton, swapLp);
+
+        column.addView(holder, index, cardLp);
+    }
+
+    private void setLeftCard(boolean camera) {
+        mPrefs.edit().putBoolean("left_camera", camera).apply();
+        showLeftCard();
+    }
+
+    private void showLeftCard() {
+        boolean camera = mPrefs.getBoolean("left_camera", false);
+        mSpeedCard.setVisibility(camera ? View.INVISIBLE : View.VISIBLE);
+        mCameraCard.setVisibility(camera ? View.VISIBLE : View.GONE);
+        if (!camera) {
+            mCardCamera.stop();
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
+            return;
+        }
+        mCardCamera.start();
+    }
+
+    // ---- Screen shape -----------------------------------------------------------------------
+
+    /** Below this width/height ratio the dashboard columns are stacked (squarer car screens). */
+    private static final float STACK_BELOW_ASPECT = 1.3f;
+
+    /**
+     * Wide screens (phones, 16:9 head units) show clock+speed beside music+shortcuts;
+     * squarer ones put the two groups on top of each other so nothing gets squeezed.
+     */
+    private void fitDashboard(int width, int height) {
+        LinearLayout dash = findViewById(R.id.root);
+        boolean stack = height > 0 && (float) width / height < STACK_BELOW_ASPECT;
+        int orientation = stack ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL;
+        if (dash.getOrientation() == orientation) return;
+        dash.setOrientation(orientation);
+        for (int i = 0; i < dash.getChildCount(); i++) {
+            View column = dash.getChildAt(i);
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) column.getLayoutParams();
+            lp.width = stack ? ViewGroup.LayoutParams.MATCH_PARENT : 0;
+            lp.height = stack ? 0 : ViewGroup.LayoutParams.MATCH_PARENT;
+            int gap = i == 0 ? 0 : dp(12);
+            lp.setMargins(stack ? 0 : gap, stack ? gap : 0, 0, 0);
+            column.setLayoutParams(lp);
+        }
+        // Stacked: the clock/speed group sits side by side to use the width.
+        LinearLayout top = (LinearLayout) dash.getChildAt(0);
+        top.setOrientation(stack ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        for (int i = 0; i < top.getChildCount(); i++) {
+            View card = top.getChildAt(i);
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) card.getLayoutParams();
+            lp.width = stack ? 0 : ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.height = stack ? ViewGroup.LayoutParams.MATCH_PARENT : 0;
+            int gap = i == 0 ? 0 : dp(12);
+            lp.setMargins(stack ? gap : 0, stack ? 0 : gap, 0, 0);
+            card.setLayoutParams(lp);
+        }
+    }
+
+    // ---- App pages ------------------------------------------------------------------------
+
+    /** Rebuilds the swipe pages of app icons after the dashboard (page 0). */
+    private void buildAppPages() {
+        if (mPalette == null || mPager.getWidth() == 0) return;
+        // CarPlay-style: 4x2 on wide (16:9 and wider) screens, 4x3 on squarer (4:3) ones.
+        float aspect = (float) mPager.getWidth() / mPager.getHeight();
+        int cols = 4;
+        int rows = aspect < 1.55f ? 3 : 2;
+        int perPage = cols * rows;
+        // Icon size: CarPlay-like 72dp, smaller if the cell cannot fit it plus its label.
+        int cellH = (mPager.getHeight() - dp(40)) / rows - dp(8);
+        int iconSize = Math.max(dp(36), Math.min(dp(72), cellH - dp(34)));
+
+        while (mPager.getChildCount() > 1) mPager.removeViewAt(1);
+        List<String[]> apps = launchableApps(false);
+        int hiddenCount = hiddenApps().size();
+        // Placeholder entry for the "Hidden apps" cell (null package).
+        if (hiddenCount > 0) apps.add(new String[]{"Hidden apps (" + hiddenCount + ")", null});
+        PackageManager pm = getPackageManager();
+        GridLayout page = null;
+        for (int i = 0; i < apps.size(); i++) {
+            if (i % perPage == 0) {
+                page = new GridLayout(this);
+                page.setColumnCount(cols);
+                page.setRowCount(rows);
+                page.setPadding(dp(16), dp(16), dp(16), dp(24));
+                mPager.addView(page);
+            }
+            String label = apps.get(i)[0];
+            String pkg = apps.get(i)[1];
+            LinearLayout cell = new LinearLayout(this);
+            cell.setOrientation(LinearLayout.VERTICAL);
+            cell.setGravity(Gravity.CENTER);
+            cell.setBackgroundResource(android.R.drawable.list_selector_background);
+            ImageView iv = new ImageView(this);
+            if (pkg == null) {
+                iv.setImageResource(R.drawable.ic_hidden);
+                iv.setImageTintList(ColorStateList.valueOf(mPalette.accent));
+                iv.setBackground(mPalette.chip(this));
+                iv.setPadding(iconSize / 5, iconSize / 5, iconSize / 5, iconSize / 5);
+            } else {
+                try {
+                    iv.setImageDrawable(pm.getApplicationIcon(pkg));
+                } catch (PackageManager.NameNotFoundException ignored) {
+                }
+            }
+            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            cell.addView(iv, new LinearLayout.LayoutParams(iconSize, iconSize));
+            TextView tv = new TextView(this);
+            tv.setText(label);
+            tv.setTextColor(mPalette.text);
+            tv.setTextSize(15);
+            tv.setGravity(Gravity.CENTER);
+            tv.setMaxLines(1);
+            tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tlp.topMargin = dp(6);
+            cell.addView(tv, tlp);
+            if (pkg == null) {
+                cell.setOnClickListener(v -> showHiddenApps());
+            } else {
+                cell.setOnClickListener(v -> launch(pkg));
+                cell.setOnLongClickListener(v -> {
+                    appOptions(label, pkg);
+                    return true;
+                });
+            }
+            page.addView(cell, gridCell(i % perPage, cols));
+        }
+        // Pad the last page so its cells keep the same size as on full pages.
+        int used = apps.size() % perPage;
+        if (page != null && used != 0) {
+            for (int pos = used; pos < perPage; pos++) page.addView(new View(this), gridCell(pos, cols));
+        }
+        if (mPager.getPage() >= mPager.getChildCount()) mPager.setPage(0, false);
+        updateDots();
+    }
+
+    private GridLayout.LayoutParams gridCell(int pos, int cols) {
+        GridLayout.LayoutParams lp = new GridLayout.LayoutParams(
+                GridLayout.spec(pos / cols, 1f), GridLayout.spec(pos % cols, 1f));
+        lp.width = 0;
+        lp.height = 0;
+        lp.setMargins(dp(4), dp(4), dp(4), dp(4));
+        return lp;
+    }
+
+    /** Long-press menu for an app in the drawer. */
+    private void appOptions(String label, String pkg) {
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(label)
+                .setItems(new String[]{"Put on home screen", "Hide from app drawer"}, (d, which) -> {
+                    if (which == 0) {
+                        addToHomeTile(label, pkg);
+                    } else {
+                        java.util.Set<String> hidden = hiddenApps();
+                        hidden.add(pkg);
+                        setHiddenApps(hidden);
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    /** Tick an app to show it in the drawer again. */
+    private void showHiddenApps() {
+        java.util.Set<String> hidden = hiddenApps();
+        List<String[]> apps = new ArrayList<>();
+        for (String[] app : launchableApps(true)) {
+            if (hidden.contains(app[1])) apps.add(app);
+        }
+        String[] labels = new String[apps.size()];
+        boolean[] checked = new boolean[apps.size()];
+        for (int i = 0; i < apps.size(); i++) labels[i] = apps.get(i)[0];
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Show again in the app drawer")
+                .setMultiChoiceItems(labels, checked, (d, which, isChecked) -> checked[which] = isChecked)
+                .setPositiveButton("Show", (d, w) -> {
+                    for (int i = 0; i < apps.size(); i++) if (checked[i]) hidden.remove(apps.get(i)[1]);
+                    setHiddenApps(hidden);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private java.util.Set<String> hiddenApps() {
+        // Copy: the set returned by SharedPreferences must not be modified in place.
+        return new java.util.HashSet<>(mPrefs.getStringSet("hidden_apps", Collections.emptySet()));
+    }
+
+    private void setHiddenApps(java.util.Set<String> hidden) {
+        mPrefs.edit().putStringSet("hidden_apps", hidden).apply();
+        buildAppPages();
+    }
+
+    private void addToHomeTile(String label, String pkg) {
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Put " + label + " on the home screen as…")
+                .setItems(SLOT_NAMES, (d, slot) -> {
+                    mPrefs.edit().putString("slot_" + slot, pkg).apply();
+                    buildTiles();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void updateDots() {
+        if (mPalette == null) return;
+        mDots.removeAllViews();
+        int count = mPager.getChildCount();
+        if (count < 2 || mPager.getPage() == 0) return;
+        for (int i = 0; i < count; i++) {
+            View dot = new View(this);
+            GradientDrawable d = new GradientDrawable();
+            d.setShape(GradientDrawable.OVAL);
+            d.setColor(i == mPager.getPage() ? mPalette.accent : mPalette.stroke);
+            dot.setBackground(d);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(8), dp(8));
+            lp.setMargins(dp(5), 0, dp(5), 0);
+            mDots.addView(dot, lp);
+        }
+    }
+
+    private List<String[]> launchableApps(boolean includeHidden) {
+        PackageManager pm = getPackageManager();
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        java.util.Set<String> hidden = includeHidden ? Collections.emptySet() : hiddenApps();
+        List<String[]> apps = new ArrayList<>();
+        for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
+            String pkg = ri.activityInfo.packageName;
+            if (pkg.equals(getPackageName()) || hidden.contains(pkg)) continue;
+            apps.add(new String[]{ri.loadLabel(pm).toString(), pkg});
+        }
+        Collections.sort(apps, (a, b) -> a[0].compareToIgnoreCase(b[0]));
+        return apps;
+    }
+
     private void chooseSlotApp(int slot) {
         pickApp("Choose app for " + SLOT_NAMES[slot], pkg -> {
             mPrefs.edit().putString("slot_" + slot, pkg).apply();
@@ -336,15 +711,7 @@ public class HomeActivity extends Activity implements LocationListener {
     /** Simple app list (icon + name), sorted by name. */
     private void pickApp(String title, OnPicked onPicked) {
         PackageManager pm = getPackageManager();
-        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> found = pm.queryIntentActivities(main, 0);
-        List<String[]> apps = new ArrayList<>();
-        for (ResolveInfo ri : found) {
-            String pkg = ri.activityInfo.packageName;
-            if (pkg.equals(getPackageName())) continue;
-            apps.add(new String[]{ri.loadLabel(pm).toString(), pkg});
-        }
-        Collections.sort(apps, (a, b) -> a[0].compareToIgnoreCase(b[0]));
+        List<String[]> apps = launchableApps(true);
 
         BaseAdapter adapter = new BaseAdapter() {
             @Override
@@ -463,7 +830,9 @@ public class HomeActivity extends Activity implements LocationListener {
             return;
         }
         mSource.setText(appLabel(mController.getPackageName()));
-        mTitle.setText(md.getString(MediaMetadata.METADATA_KEY_TITLE));
+        String title = md.getString(MediaMetadata.METADATA_KEY_TITLE);
+        if (!title.contentEquals(mTitle.getText())) mTitle.setText(title);
+        mTitle.setSelected(true);
         String artist = md.getString(MediaMetadata.METADATA_KEY_ARTIST);
         if (artist == null) artist = md.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST);
         mArtist.setText(artist == null ? "" : artist);
@@ -471,6 +840,7 @@ public class HomeActivity extends Activity implements LocationListener {
         Bitmap art = md.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
         if (art == null) art = md.getBitmap(MediaMetadata.METADATA_KEY_ART);
         if (art == null) art = md.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
+        if (art == null) art = loadArtUri(md);
         if (art != null) {
             mArt.setImageTintList(null);
             mArt.setBackground(null);
@@ -478,13 +848,84 @@ public class HomeActivity extends Activity implements LocationListener {
             mArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
             mArt.setImageBitmap(art);
         } else {
-            setPlaceholderArt();
+            // No cover for this track: show the playing app's own icon instead.
+            try {
+                Drawable icon = getPackageManager().getApplicationIcon(mController.getPackageName());
+                mArt.setImageTintList(null);
+                mArt.setImageDrawable(icon);
+                mArt.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                mArt.setBackground(mPalette.chip(this));
+                int pad = Math.min(mArt.getWidth(), mArt.getHeight()) / 5;
+                mArt.setPadding(pad, pad, pad, pad);
+            } catch (PackageManager.NameNotFoundException e) {
+                setPlaceholderArt();
+            }
         }
 
         PlaybackState state = mController.getPlaybackState();
         boolean playing = state != null && state.getState() == PlaybackState.STATE_PLAYING;
         mPlay.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
         mControls.setVisibility(View.VISIBLE);
+    }
+
+    /**
+     * Art given as a URI. Local ones are read directly; web ones (YouTube Music) are
+     * downloaded in the background and the card refreshes when they arrive.
+     */
+    private Bitmap loadArtUri(MediaMetadata md) {
+        for (String key : new String[]{MediaMetadata.METADATA_KEY_ALBUM_ART_URI,
+                MediaMetadata.METADATA_KEY_ART_URI, MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI}) {
+            String uri = md.getString(key);
+            if (uri == null) continue;
+            if (uri.startsWith("http")) {
+                if (uri.equals(mWebArtUri)) return mWebArt;
+                fetchWebArt(uri);
+                return null;
+            }
+            if (!(uri.startsWith("content:") || uri.startsWith("file:")
+                    || uri.startsWith("android.resource:"))) continue;
+            try (java.io.InputStream in = getContentResolver().openInputStream(android.net.Uri.parse(uri))) {
+                Bitmap b = android.graphics.BitmapFactory.decodeStream(in);
+                if (b != null) return b;
+            } catch (Exception ignored) {
+                // Not readable by us; try the next key.
+            }
+        }
+        return null;
+    }
+
+    private String mWebArtUri;
+    private Bitmap mWebArt;
+    private String mFetchingUri;
+
+    private void fetchWebArt(String uri) {
+        if (uri.equals(mFetchingUri)) return;
+        mFetchingUri = uri;
+        new Thread(() -> {
+            Bitmap b = null;
+            try {
+                java.net.HttpURLConnection c =
+                        (java.net.HttpURLConnection) new java.net.URL(uri).openConnection();
+                c.setConnectTimeout(5000);
+                c.setReadTimeout(5000);
+                try (java.io.InputStream in = c.getInputStream()) {
+                    b = android.graphics.BitmapFactory.decodeStream(in);
+                } finally {
+                    c.disconnect();
+                }
+            } catch (Exception ignored) {
+                // Offline or blocked: keep the placeholder.
+            }
+            Bitmap result = b;
+            mHandler.post(() -> {
+                if (!uri.equals(mFetchingUri)) return;
+                mFetchingUri = null;
+                if (result == null) return;
+                mWebArtUri = uri;
+                mWebArt = result;
+                updateMedia();
+            });
+        }, "art").start();
     }
 
     private void showMediaPlaceholder(String source, String title, String subtitle) {
@@ -534,6 +975,7 @@ public class HomeActivity extends Activity implements LocationListener {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         if (requestCode == REQ_LOCATION) startLocation();
+        if (requestCode == REQ_CAMERA) showLeftCard();
     }
 
     @Override

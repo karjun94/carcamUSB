@@ -32,6 +32,7 @@
                     android:id="@+id/time"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
+                    android:layout_marginEnd="52dp"
                     android:layout_weight="1"
                     android:autoSizeMaxTextSize="140sp"
                     android:autoSizeMinTextSize="32sp"
@@ -45,11 +46,14 @@
 
                 <TextClock
                     android:id="@+id/date"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="match_parent"
+                    android:layout_height="32dp"
+                    android:autoSizeMaxTextSize="20sp"
+                    android:autoSizeMinTextSize="12sp"
+                    android:autoSizeTextType="uniform"
+                    android:maxLines="1"
                     android:format12Hour="EEEE, d MMMM"
-                    android:format24Hour="EEEE, d MMMM"
-                    android:textSize="20sp" />
+                    android:format24Hour="EEEE, d MMMM" />
             </LinearLayout>
 
             <ImageButton
@@ -141,7 +145,7 @@
                 android:id="@+id/art"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_weight="0.55"
+                android:layout_weight="0.45"
                 android:adjustViewBounds="true"
                 android:contentDescription="@null"
                 android:scaleType="centerCrop" />
@@ -155,6 +159,7 @@
                 android:orientation="vertical">
 
                 <LinearLayout
+                    android:id="@+id/media_text"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
                     android:layout_weight="1"
@@ -175,8 +180,9 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:ellipsize="end"
-                    android:maxLines="1"
+                    android:ellipsize="marquee"
+                    android:marqueeRepeatLimit="marquee_forever"
+                    android:singleLine="true"
                     android:textSize="24sp"
                     android:textStyle="bold" />
 
@@ -193,26 +199,27 @@
                 <LinearLayout
                     android:id="@+id/controls"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="64dp"
                     android:layout_marginTop="4dp"
+                    android:gravity="center_vertical"
                     android:orientation="horizontal">
 
                     <ImageButton
                         android:id="@+id/prev"
-                        android:layout_width="56dp"
-                        android:layout_height="56dp"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
                         android:background="?android:attr/selectableItemBackgroundBorderless"
                         android:contentDescription="Previous"
+                        android:padding="6dp"
                         android:scaleType="fitCenter"
-                        android:padding="10dp"
                         android:src="@drawable/ic_prev" />
 
                     <ImageButton
                         android:id="@+id/play"
-                        android:layout_width="64dp"
-                        android:layout_height="64dp"
-                        android:layout_marginStart="12dp"
-                        android:layout_marginEnd="12dp"
+                        android:layout_width="60dp"
+                        android:layout_height="60dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_marginEnd="8dp"
                         android:contentDescription="Play / pause"
                         android:padding="14dp"
                         android:scaleType="fitCenter"
@@ -220,11 +227,11 @@
 
                     <ImageButton
                         android:id="@+id/next"
-                        android:layout_width="56dp"
-                        android:layout_height="56dp"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
                         android:background="?android:attr/selectableItemBackgroundBorderless"
                         android:contentDescription="Next"
-                        android:padding="10dp"
+                        android:padding="6dp"
                         android:scaleType="fitCenter"
                         android:src="@drawable/ic_next" />
                 </LinearLayout>

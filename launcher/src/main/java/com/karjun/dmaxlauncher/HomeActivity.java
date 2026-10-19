@@ -146,6 +146,8 @@ public class HomeActivity extends Activity implements LocationListener, android.
     private RadioSource mRadio;
     private RadioSource.Station mStation;
     private boolean mShowingRadio;
+    /** CarPlay / Android Auto track shown on the card (null when not). */
+    private ProjectionSource.Track mShowingProjection;
 
     private final Runnable mTick = new Runnable() {
         @Override
@@ -236,6 +238,8 @@ public class HomeActivity extends Activity implements LocationListener, android.
         mMediaCard.setOnClickListener(v -> {
             if (!mMediaAllowed) {
                 startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+            } else if (mShowingProjection != null) {
+                launch(mShowingProjection.pkg);
             } else if (mShowingRadio) {
                 launch("com.imotor.fmam");
             } else if (mController != null) {
@@ -261,6 +265,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
         buildTiles();
         buildAppPages();
         connectMedia();
+        ProjectionSource.setListener(track -> updateMedia());
         if (mRadio != null) {
             mRadio.start(station -> {
                 mStation = station;
@@ -283,6 +288,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
         mResumed = false;
         MediaListener.setNavListener(null);
         if (mRadio != null) mRadio.stop();
+        ProjectionSource.setListener(null);
         // Keep the full-screen camera "open" while in the background (the steering
         // button's own app, e.g. the dialer for Call, briefly covers us); the stream
         // stops below and restarts on resume. A plain Home press closes it (onNewIntent).
@@ -1291,7 +1297,15 @@ public class HomeActivity extends Activity implements LocationListener, android.
         MediaMetadata md = mController == null ? null : mController.getMetadata();
         PlaybackState ps = mController == null ? null : mController.getPlaybackState();
         boolean appPlaying = ps != null && ps.getState() == PlaybackState.STATE_PLAYING;
-        // The tuner has no media session: show it while no app is playing.
+        // Priority: an app on the unit that is playing, then the phone over CarPlay /
+        // Android Auto, then the tuner (neither has a usable media session).
+        ProjectionSource.Track track = ProjectionSource.current();
+        mShowingProjection = !appPlaying && track != null && !track.title.isEmpty() ? track : null;
+        if (mShowingProjection != null) {
+            mShowingRadio = false;
+            showProjection(mShowingProjection);
+            return;
+        }
         mShowingRadio = !appPlaying && mStation != null;
         if (mShowingRadio) {
             showRadio(mStation);
@@ -1428,6 +1442,22 @@ public class HomeActivity extends Activity implements LocationListener, android.
         } catch (SecurityException ignored) {
         }
         if (mRadio != null) mRadio.step(next);
+    }
+
+    /** The phone's track over CarPlay / Android Auto (info only; control it on the phone screen). */
+    private void showProjection(ProjectionSource.Track t) {
+        mSource.setText(t.source);
+        if (!t.title.contentEquals(mTitle.getText())) mTitle.setText(t.title);
+        mTitle.setSelected(true);
+        String sub = t.artist.isEmpty() ? t.album : t.album.isEmpty() ? t.artist : t.artist + " · " + t.album;
+        mArtist.setText(sub);
+        mArtist.setVisibility(sub.isEmpty() ? View.GONE : View.VISIBLE);
+        mArt.setImageTintList(null);
+        mArt.setBackground(null);
+        mArt.setPadding(0, 0, 0, 0);
+        mArt.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mArt.setImageDrawable(AppIcons.icon(this, t.pkg));
+        mControls.setVisibility(View.GONE);
     }
 
     /** Radio on the music card: "RADIO · FM", big frequency, RDS station name. */

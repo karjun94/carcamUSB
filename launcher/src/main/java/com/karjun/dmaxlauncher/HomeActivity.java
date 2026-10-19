@@ -64,13 +64,14 @@ public class HomeActivity extends Activity implements LocationListener, android.
     private static final String[] THEME_LABELS = {"AUTO", "DAY", "NIGHT"};
 
     /** Shortcut slots; the last one always opens the app list. */
+    private static final int SLOT_CAMERA = 3;
     private static final String[] SLOT_NAMES = {"Phone", "Navigation", "Radio", "Camera", "Settings"};
     /** First installed package wins. Long-press a tile to pick something else. */
     private static final String[][] SLOT_DEFAULTS = {
             {"com.ucarhu.carlink", "com.imotor.phoneconnect", "com.carletter.car", "com.google.android.projection.gearhead"},
             {"com.waze", "com.google.android.apps.maps"},
             {"com.imotor.fmam"},
-            {"com.karjun.dmaxcam"},
+            {}, // empty = CarHome's own front camera
             {"com.android.settings"},
     };
 
@@ -407,6 +408,8 @@ public class HomeActivity extends Activity implements LocationListener, android.
                 } catch (PackageManager.NameNotFoundException e) {
                     label = SLOT_NAMES[slot];
                 }
+            } else if (slot == SLOT_CAMERA) {
+                label = "Front camera";
             } else {
                 // Unassigned: tap or hold to pick an app.
                 label = "+ " + SLOT_NAMES[slot];
@@ -421,6 +424,9 @@ public class HomeActivity extends Activity implements LocationListener, android.
             ImageView iv = new ImageView(this);
             if (icon != null) {
                 iv.setImageDrawable(icon);
+            } else if (!appsTile && slot == SLOT_CAMERA) {
+                iv.setImageResource(com.karjun.dmaxcam.core.R.drawable.ic_videocam);
+                iv.setImageTintList(ColorStateList.valueOf(mPalette.accent));
             } else {
                 iv.setImageResource(R.drawable.ic_apps);
                 iv.setImageTintList(ColorStateList.valueOf(mPalette.accent));
@@ -451,6 +457,10 @@ public class HomeActivity extends Activity implements LocationListener, android.
             } else {
                 tile.setOnClickListener(v -> {
                     if (pkg != null && launch(pkg)) return;
+                    if (s == SLOT_CAMERA) {
+                        setCameraExpanded(true);
+                        return;
+                    }
                     chooseSlotApp(s);
                 });
                 tile.setOnLongClickListener(v -> {

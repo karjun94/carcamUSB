@@ -123,6 +123,16 @@ public class HomeActivity extends Activity implements LocationListener, android.
     private boolean mEditing;
     private boolean mResumed;
 
+    // Navigation card (covers the clock card while Waze / Maps navigates).
+    private LinearLayout mNavCard;
+    private ImageView mNavArrow;
+    private TextView mNavDistance, mNavInstruction, mNavFooter;
+    private ImageButton mHomeSettings;
+
+    // Parking mode: armed once above the "close" speed, fires when slowing below "open".
+    private boolean mParkingArmed;
+    private boolean mParkingOpened;
+
     private LocationManager mLocationManager;
     private long mLastFixAt;
 
@@ -224,6 +234,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
 
         fitMediaCard();
         setUpLeftCard();
+        setUpClockCardExtras();
         startService(new Intent(this, KeyWatchService.class));
 
         mSessionManager = (MediaSessionManager) getSystemService(Context.MEDIA_SESSION_SERVICE);
@@ -240,6 +251,8 @@ public class HomeActivity extends Activity implements LocationListener, android.
         connectMedia();
         startLocation();
         mResumed = true;
+        MediaListener.setNavListener(this::showNav);
+        showNav(MediaListener.currentNav());
         mPreview.setScaleX(Prefs.isMirror(this) ? -1f : 1f);
         mGuideLines.setPoints(Prefs.getGuidePoints(this));
         if (!handleCameraIntent(getIntent())) showLeftCard();
@@ -250,6 +263,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
     @Override
     protected void onPause() {
         mResumed = false;
+        MediaListener.setNavListener(null);
         setCameraExpanded(false);
         mCardCamera.stop();
         mSensors.unregisterListener(this);
@@ -340,6 +354,12 @@ public class HomeActivity extends Activity implements LocationListener, android.
             ((TextView) mCameraCard.getChildAt(1)).setTextColor(0xFFE8EDF2);
             mSwapButton.setBackground(p.chip(this));
             mCompass.setBackground(p.card(this));
+            mNavCard.setBackground(p.card(this));
+            mNavCard.setPadding(dp(20), dp(20), dp(20), dp(20));
+            mNavDistance.setTextColor(p.text);
+            mNavInstruction.setTextColor(p.text);
+            mNavFooter.setTextColor(p.textSecondary);
+            mHomeSettings.setImageTintList(ColorStateList.valueOf(p.textSecondary));
             mCompass.setColors(p.text, p.textSecondary, p.accent);
             mSwapButton.setImageTintList(ColorStateList.valueOf(p.accent));
         }
@@ -506,6 +526,96 @@ public class HomeActivity extends Activity implements LocationListener, android.
         button.setLayoutParams(lp);
     }
 
+    // ---- Clock card: settings gear + navigation card ------------------------------------
+
+    private void setUpClockCardExtras() {
+        FrameLayout clock = (FrameLayout) mClockCard;
+
+        mNavCard = new LinearLayout(this);
+        mNavCard.setOrientation(LinearLayout.HORIZONTAL);
+        mNavCard.setGravity(Gravity.CENTER_VERTICAL);
+        mNavCard.setVisibility(View.GONE);
+        mNavArrow = new ImageView(this);
+        mNavArrow.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mNavCard.addView(mNavArrow, new LinearLayout.LayoutParams(dp(96), dp(96)));
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        mNavDistance = new TextView(this);
+        mNavDistance.setTextSize(40);
+        mNavDistance.setTypeface(null, android.graphics.Typeface.BOLD);
+        mNavDistance.setMaxLines(1);
+        mNavInstruction = new TextView(this);
+        mNavInstruction.setTextSize(20);
+        mNavInstruction.setMaxLines(2);
+        mNavInstruction.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        mNavFooter = new TextView(this);
+        mNavFooter.setTextSize(14);
+        mNavFooter.setPadding(0, dp(6), 0, 0);
+        texts.addView(mNavDistance);
+        texts.addView(mNavInstruction);
+        texts.addView(mNavFooter);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tlp.setMarginStart(dp(16));
+        mNavCard.addView(texts, tlp);
+        mNavCard.setOnClickListener(v -> {
+            MediaListener.Nav nav = MediaListener.currentNav();
+            if (nav != null) launch(nav.pkg);
+        });
+        // Above the clock, below the corner buttons.
+        clock.addView(mNavCard, 1, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        mHomeSettings = new ImageButton(this);
+        mHomeSettings.setImageResource(R.drawable.ic_settings);
+        mHomeSettings.setContentDescription("CarHome settings");
+        mHomeSettings.setBackgroundResource(android.R.drawable.list_selector_background);
+        mHomeSettings.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mHomeSettings.setPadding(dp(8), dp(8), dp(8), dp(8));
+        mHomeSettings.setOnClickListener(v -> startActivity(new Intent(this, HomeSettingsActivity.class)));
+        clock.addView(mHomeSettings, new FrameLayout.LayoutParams(dp(40), dp(40), Gravity.BOTTOM | Gravity.END));
+    }
+
+    private void showNav(MediaListener.Nav nav) {
+        boolean show = nav != null && HomePrefs.navCard(this);
+        mNavCard.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (!show) return;
+        mNavDistance.setText(nav.distance);
+        mNavInstruction.setText(nav.instruction);
+        mNavFooter.setText(new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                .format(new java.util.Date()) + "  ·  " + appLabel(nav.pkg));
+        if (nav.arrow != null) {
+            mNavArrow.setImageDrawable(nav.arrow);
+        } else {
+            try {
+                mNavArrow.setImageDrawable(getPackageManager().getApplicationIcon(nav.pkg));
+            } catch (PackageManager.NameNotFoundException e) {
+                mNavArrow.setImageDrawable(null);
+            }
+        }
+    }
+
+    // ---- Parking mode -----------------------------------------------------------------------
+
+    /**
+     * Once you have driven above the "close" speed, slowing below the "open" speed
+     * brings up the front camera; speeding up again closes it. A camera the driver
+     * opened by hand is never closed automatically.
+     */
+    private void checkParkingMode(float kmh) {
+        if (!HomePrefs.parkingMode(this)) return;
+        if (kmh > HomePrefs.parkingHideAbove(this)) {
+            mParkingArmed = true;
+            if (mParkingOpened && isCameraExpanded()) setCameraExpanded(false);
+            mParkingOpened = false;
+        } else if (mParkingArmed && kmh < HomePrefs.parkingShowBelow(this)) {
+            mParkingArmed = false;
+            if (isCameraExpanded()) return;
+            mParkingOpened = true;
+            if (mResumed) setCameraExpanded(true);
+            else CameraActions.send(this, CameraActions.ACTION_OPEN);
+        }
+    }
+
     // ---- Speed / camera card --------------------------------------------------------------
 
     /**
@@ -602,7 +712,10 @@ public class HomeActivity extends Activity implements LocationListener, android.
     private void setCameraExpanded(boolean expand) {
         boolean expanded = isCameraExpanded();
         if (expand == expanded) return;
-        if (!expand) setEditing(false);
+        if (!expand) {
+            setEditing(false);
+            mParkingOpened = false;
+        }
         ((ViewGroup) mCameraCard.getParent()).removeView(mCameraCard);
         if (expand) {
             mExpanded.addView(mCameraCard, 0, new FrameLayout.LayoutParams(
@@ -1150,6 +1263,8 @@ public class HomeActivity extends Activity implements LocationListener, android.
 
         PlaybackState state = mController.getPlaybackState();
         boolean playing = state != null && state.getState() == PlaybackState.STATE_PLAYING;
+        // Remembered for "resume music when the car starts".
+        if (playing) mPrefs.edit().putString("last_music_pkg", mController.getPackageName()).apply();
         mPlay.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
         mControls.setVisibility(View.VISIBLE);
     }
@@ -1269,6 +1384,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
         mLastFixAt = SystemClock.elapsedRealtime();
         rememberPosition(location);
         float kmh = location.hasSpeed() ? location.getSpeed() * 3.6f : 0f;
+        checkParkingMode(kmh);
         if (location.hasBearing() && kmh >= GPS_HEADING_MIN_KMH) {
             mGpsBearing = location.getBearing();
             mGpsBearingAt = SystemClock.elapsedRealtime();

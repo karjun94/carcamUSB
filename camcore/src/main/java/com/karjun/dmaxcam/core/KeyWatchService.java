@@ -29,6 +29,9 @@ public class KeyWatchService extends Service {
     private static final String MATCH_QUEUEING = "interceptKeyBeforeQueueing";
     // "IMPowerManagerService: onVehicleReverseSignalChanged new reverse = true"
     private static final Pattern REVERSE = Pattern.compile("onVehicleReverseSignalChanged new reverse = (true|false)");
+    // "IMPowerManagerService: onTopActivityChanged packageName = com.x, className = .Main, foreground = true"
+    private static final Pattern TOP = Pattern.compile(
+            "onTopActivityChanged packageName = (\\S+), className = (\\S+), foreground = true");
     private static final Pattern KEY_UP = Pattern.compile("action=ACTION_UP, keyCode=(KEYCODE_\\w+)");
     private static final long DEBOUNCE_MS = 800;
     // The key's own app (dialer, voice assistant...) opens first; launch after it so we end up on top.
@@ -88,6 +91,11 @@ public class KeyWatchService extends Service {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(mLogcat.getInputStream()));
                 String line;
                 while (mRunning && (line = reader.readLine()) != null) {
+                    Matcher top = TOP.matcher(line);
+                    if (top.find()) {
+                        ForegroundApp.onTop(getPackageName(), top.group(1), top.group(2));
+                        continue;
+                    }
                     Matcher rev = REVERSE.matcher(line);
                     if (rev.find()) {
                         sendBroadcast(new Intent(CameraActions.ACTION_REVERSE_CHANGED)

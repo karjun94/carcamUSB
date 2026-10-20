@@ -42,6 +42,7 @@ import android.widget.TextClock;
 import android.widget.TextView;
 
 import com.karjun.dmaxcam.core.CameraActions;
+import com.karjun.dmaxcam.core.ForegroundApp;
 import com.karjun.dmaxcam.core.GuideEditBar;
 import com.karjun.dmaxcam.core.GuideLinesView;
 import com.karjun.dmaxcam.core.KeyWatchService;
@@ -126,6 +127,10 @@ public class HomeActivity extends Activity implements LocationListener, android.
     private GuideEditBar mEditBar;
     private boolean mEditing;
     private boolean mResumed;
+    /** True between onPause and the next onResume (CarHome was not the app in front). */
+    private boolean mInBackground = true;
+    /** App to give the screen back to when the camera closes (opened on top of it). */
+    private ComponentName mReturnTo;
 
     // Navigation card (covers the clock card while Waze / Maps navigates).
     private LinearLayout mNavCard;
@@ -300,7 +305,9 @@ public class HomeActivity extends Activity implements LocationListener, android.
         showNav(MediaListener.currentNav());
         mPreview.setScaleX(Prefs.isMirror(this) ? -1f : 1f);
         mGuideLines.setPoints(Prefs.getGuidePoints(this));
-        if (!handleCameraIntent(getIntent())) showLeftCard();
+        boolean fromBackground = mInBackground;
+        mInBackground = false;
+        if (!handleCameraIntent(getIntent(), fromBackground)) showLeftCard();
         setIntent(new Intent(Intent.ACTION_MAIN));
         updateMuteIcon();
         mHandler.post(mTick);
@@ -309,6 +316,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
     @Override
     protected void onPause() {
         mResumed = false;
+        mInBackground = true;
         MediaListener.setNavListener(null);
         if (mRadio != null) mRadio.stop();
         ProjectionSource.setListener(null);
@@ -349,6 +357,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
             return;
         }
         // Home pressed while already showing: go back to the dashboard, like CarPlay.
+        mReturnTo = null;
         setCameraExpanded(false);
         mPager.setPage(0, true);
     }
@@ -357,8 +366,11 @@ public class HomeActivity extends Activity implements LocationListener, android.
      * Steering button (TOGGLE), "Open camera" (OPEN) and "Adjust guide lines" (ADJUST)
      * from the shared button watcher and settings screen. Returns true if handled.
      */
-    private boolean handleCameraIntent(Intent intent) {
+    private boolean handleCameraIntent(Intent intent, boolean fromBackground) {
         String action = intent == null ? null : intent.getAction();
+        boolean opening = action != null && action.startsWith("com.karjun.dmaxcam.action.") && !isCameraExpanded();
+        // Opened on top of another app (CarPlay, Waze…): go back there when it closes.
+        if (opening) mReturnTo = fromBackground ? ForegroundApp.openedOver() : null;
         if (CameraActions.ACTION_TOGGLE.equals(action)) {
             if (isCameraExpanded() && !mEditing) setCameraExpanded(false);
             else setCameraExpanded(true);
@@ -809,6 +821,21 @@ public class HomeActivity extends Activity implements LocationListener, android.
      * Moves the live camera view between its card and the full-screen layer.
      * The camera keeps running; only the view is re-parented, so there is no reopen.
      */
+    /** Camera closed: hand the screen back to the app it was opened over, if any. */
+    private void returnToPreviousApp() {
+        ComponentName target = mReturnTo;
+        mReturnTo = null;
+        if (target == null || !mResumed) return;
+        Intent intent = getPackageManager().getLaunchIntentForPackage(target.getPackageName());
+        if (intent == null) intent = new Intent(Intent.ACTION_MAIN).setComponent(target);
+        try {
+            // Brings the app's existing task to the front rather than restarting it.
+            startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));
+        } catch (RuntimeException e) {
+            android.util.Log.w("CarHome", "could not return to " + target, e);
+        }
+    }
+
     private boolean isCameraExpanded() {
         return mCameraCard.getParent() == mExpanded;
     }
@@ -817,6 +844,7 @@ public class HomeActivity extends Activity implements LocationListener, android.
         boolean expanded = isCameraExpanded();
         if (expand == expanded) return;
         if (!expand) {
+            returnToPreviousApp();
             setEditing(false);
             mParkingOpened = false;
             mReverseOpened = false;
